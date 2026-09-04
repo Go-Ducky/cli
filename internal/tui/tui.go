@@ -386,6 +386,8 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 		m.addItem("assistant", helpText())
 	case "/exit", "/quit", "/q":
 		return tea.Quit
+	case "/config":
+		return m.configCmd(arg)
 	case "/model":
 		if arg != "" {
 			m.agent.SetModel(arg)
@@ -461,9 +463,79 @@ func providersHelp(cfg *config.Config) string {
 	return sb.String()
 }
 
+// configCmd shows or edits config keys in-app via /config.
+func (m *model) configCmd(arg string) tea.Cmd {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		m.addItem("assistant", configHelp(m.cfg))
+		return nil
+	}
+	key, val, _ := strings.Cut(arg, " ")
+	key = strings.ToLower(strings.TrimSpace(key))
+	val = strings.TrimSpace(val)
+	if val == "" {
+		m.addItem("assistant", configHelp(m.cfg))
+		return nil
+	}
+	if err := m.cfg.Set(key, val); err != nil {
+		m.addItem("assistant", "Error: "+err.Error())
+		return nil
+	}
+	switch key {
+	case "provider":
+		return m.switchProvider(val)
+	case "model":
+		m.agent.SetModel(val)
+		m.modelName = val
+	case "ollama.host":
+		if m.agent.ProviderName() == "ollama" {
+			p, err := provider.New(m.cfg, m.auth)
+			if err == nil {
+				m.agent.SetProvider(p)
+			}
+		}
+	}
+	if err := m.cfg.Save(); err != nil {
+		m.addItem("assistant", "Error saving config: "+err.Error())
+		return nil
+	}
+	m.addItem("assistant", "Saved config: "+key+" = "+val)
+	return nil
+}
+
+func configHelp(cfg *config.Config) string {
+	sb := &strings.Builder{}
+	sb.WriteString("Current config:\n")
+	fmt.Fprintf(sb, "  provider            : %s\n", cfg.Provider)
+	fmt.Fprintf(sb, "  model               : %s\n", cfg.Model)
+	fmt.Fprintf(sb, "  ollama.host         : %s\n", cfg.Ollama.Host)
+	fmt.Fprintf(sb, "  ollama.model        : %s\n", cfg.Ollama.Model)
+	fmt.Fprintf(sb, "  groq.model          : %s\n", cfg.Groq.Model)
+	fmt.Fprintf(sb, "  openai.base_url     : %s\n", cfg.OpenAI.BaseURL)
+	fmt.Fprintf(sb, "  openai.model        : %s\n", cfg.OpenAI.Model)
+	fmt.Fprintf(sb, "  openrouter.base_url : %s\n", cfg.OpenRouter.BaseURL)
+	fmt.Fprintf(sb, "  openrouter.model    : %s\n", cfg.OpenRouter.Model)
+	fmt.Fprintf(sb, "  anthropic.model     : %s\n", cfg.Anthropic.Model)
+	fmt.Fprintf(sb, "  gemini.model        : %s\n", cfg.Gemini.Model)
+	fmt.Fprintf(sb, "  agent.auto_approve  : %t\n", cfg.Agent.AutoApprove)
+	fmt.Fprintf(sb, "  agent.max_iterations: %d\n", cfg.Agent.MaxIterations)
+	fmt.Fprintf(sb, "  agent.max_output_chars: %d\n", cfg.Agent.MaxOutputChars)
+	fmt.Fprintf(sb, "  agent.exclude_dirs  : %s\n", strings.Join(cfg.Agent.ExcludeDirs, ", "))
+	sb.WriteString("\nEdit keys, for example:\n")
+	sb.WriteString("  /config provider ollama\n")
+	sb.WriteString("  /config model qwen2.5-coder:7b\n")
+	sb.WriteString("  /config ollama.host http://localhost:11434\n")
+	sb.WriteString("  /config openrouter.model qwen/qwen3-coder:free\n")
+	sb.WriteString("  /config agent.auto_approve true\n")
+	sb.WriteString("  /config agent.exclude_dirs .git,node_modules\n")
+	sb.WriteString("\nValues are saved to config.json and picked up on the next run.")
+	return sb.String()
+}
+
 func helpText() string {
 	return `Commands:
   /help            Show this help
+  /config          View or edit configuration keys
   /provider <name> Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)
   /model <name>    Set the model for the current provider
   /providers       List providers and switch

@@ -68,3 +68,53 @@ func TestAuthSerialization(t *testing.T) {
 		t.Fatalf("auth not roundtripped: %+v", loaded)
 	}
 }
+
+func TestSet(t *testing.T) {
+	c := Default()
+
+	if err := c.Set("provider", "openrouter"); err != nil {
+		t.Fatalf("set provider: %v", err)
+	}
+	if c.Provider != "openrouter" {
+		t.Fatalf("provider not set, got %q", c.Provider)
+	}
+	if err := c.Set("provider", "nope"); err == nil {
+		t.Fatal("expected error for unknown provider")
+	}
+
+	if err := c.Set("model", "qwen/qwen3-coder:free"); err != nil || c.Model != "qwen/qwen3-coder:free" {
+		t.Fatalf("set model: %v (model=%q)", err, c.Model)
+	}
+	if err := c.Set("model", ""); err == nil {
+		t.Fatal("expected error for empty model")
+	}
+
+	if err := c.Set("ollama.host", "http://192.168.1.10:11434"); err != nil || c.Ollama.Host != "http://192.168.1.10:11434" {
+		t.Fatalf("set ollama.host: %v (host=%q)", err, c.Ollama.Host)
+	}
+	if err := c.Set("openrouter.model", "openai/gpt-4o-mini"); err != nil || c.OpenRouter.Model != "openai/gpt-4o-mini" {
+		t.Fatalf("set openrouter.model: %v (model=%q)", err, c.OpenRouter.Model)
+	}
+
+	if err := c.Set("agent.auto_approve", "true"); err != nil || !c.Agent.AutoApprove {
+		t.Fatalf("set agent.auto_approve true: %v", err)
+	}
+	if err := c.Set("agent.auto_approve", "banana"); err == nil {
+		t.Fatal("expected error for non-bool auto_approve")
+	}
+
+	if err := c.Set("agent.max_iterations", "5"); err != nil || c.Agent.MaxIterations != 5 {
+		t.Fatalf("set agent.max_iterations: %v", err)
+	}
+	if err := c.Set("agent.max_iterations", "zero"); err == nil {
+		t.Fatal("expected error for non-int max_iterations")
+	}
+
+	if err := c.Set("agent.exclude_dirs", ".git, node_modules"); err != nil || len(c.Agent.ExcludeDirs) != 2 || c.Agent.ExcludeDirs[1] != "node_modules" {
+		t.Fatalf("set agent.exclude_dirs: %v (dirs=%v)", err, c.Agent.ExcludeDirs)
+	}
+
+	if err := c.Set("nope.nothing", "x"); err == nil {
+		t.Fatal("expected error for unknown key")
+	}
+}

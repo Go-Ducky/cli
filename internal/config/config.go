@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 )
 
 // Config is the top-level user configuration.
@@ -185,6 +187,83 @@ func (c *Config) Save() error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+var validProviders = []string{"ollama", "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter"}
+
+// ValidProvider reports whether name is a known provider.
+func ValidProvider(name string) bool {
+	for _, p := range validProviders {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Set applies a dotted config key (e.g. "ollama.host", "agent.auto_approve")
+// with an untyped string value, as typed into the /config command.
+func (c *Config) Set(key, value string) error {
+	switch key {
+	case "provider":
+		if !ValidProvider(value) {
+			return fmt.Errorf("unknown provider %q (valid: ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)", value)
+		}
+		c.Provider = value
+	case "model":
+		if value == "" {
+			return errors.New("model cannot be empty")
+		}
+		c.Model = value
+	case "ollama.host":
+		c.Ollama.Host = value
+	case "ollama.model":
+		c.Ollama.Model = value
+	case "groq.model":
+		c.Groq.Model = value
+	case "openai.base_url":
+		c.OpenAI.BaseURL = value
+	case "openai.model":
+		c.OpenAI.Model = value
+	case "openrouter.base_url":
+		c.OpenRouter.BaseURL = value
+	case "openrouter.model":
+		c.OpenRouter.Model = value
+	case "anthropic.model":
+		c.Anthropic.Model = value
+	case "gemini.model":
+		c.Gemini.Model = value
+	case "agent.auto_approve":
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("agent.auto_approve expects true/false, got %q", value)
+		}
+		c.Agent.AutoApprove = b
+	case "agent.max_iterations":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 {
+			return fmt.Errorf("agent.max_iterations expects a positive integer, got %q", value)
+		}
+		c.Agent.MaxIterations = n
+	case "agent.max_output_chars":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 {
+			return fmt.Errorf("agent.max_output_chars expects a positive integer, got %q", value)
+		}
+		c.Agent.MaxOutputChars = n
+	case "agent.exclude_dirs":
+		parts := strings.Split(value, ",")
+		dirs := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if p = strings.TrimSpace(p); p != "" {
+				dirs = append(dirs, p)
+			}
+		}
+		c.Agent.ExcludeDirs = dirs
+	default:
+		return fmt.Errorf("unknown config key %q (try /config to list keys)", key)
+	}
+	return nil
 }
 
 // Auth holds API keys, kept separate from config so they aren't committed.
