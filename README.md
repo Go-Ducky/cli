@@ -25,13 +25,6 @@ Manual: download `goducky-windows-amd64.exe` from the
 ### macOS
 
 ```
-brew tap Go-Ducky/tap
-brew install goducky
-```
-
-Or the curl installer:
-
-```bash
 curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/install.sh | bash
 ```
 
