@@ -33,8 +33,9 @@ $UserPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($UserPath -notlike "*$InstallDir*") {
     $NewPath = $InstallDir.TrimEnd('\') + ';' + $UserPath
     [Environment]::SetEnvironmentVariable('PATH', $NewPath, 'User')
+    $env:PATH = "$InstallDir;$env:PATH"
     Write-Host "Added $InstallDir to user PATH." -ForegroundColor Yellow
-    Write-Host "You may need to restart your terminal for PATH changes to take effect." -ForegroundColor Yellow
+    Write-Host "New terminals pick it up automatically; this terminal works right now." -ForegroundColor Yellow
 }
 
 $Installed = Join-Path $InstallDir 'goducky.exe'

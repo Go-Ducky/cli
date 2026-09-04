@@ -29,16 +29,16 @@ jobs:
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
             TAG="${GITHUB_REF_NAME}"
-            PRERELEASE="false"
+            IS_DEV="false"
           else
             SHORT="$(git rev-parse --short HEAD)"
             VERSION="0.1.0-dev.${SHORT}"
             TAG="dev-${SHORT}"
-            PRERELEASE="true"
+            IS_DEV="true"
           fi
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
           echo "TAG=${TAG}" >> "$GITHUB_ENV"
-          echo "PRERELEASE=${PRERELEASE}" >> "$GITHUB_ENV"
+          echo "IS_DEV=${IS_DEV}" >> "$GITHUB_ENV"
 
       - name: Build platform binaries
         run: |
@@ -75,7 +75,7 @@ jobs:
           cat checksums.txt
 
       - name: Prune old dev releases
-        if: env.PRERELEASE == 'true'
+        if: env.IS_DEV == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -89,11 +89,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
-          name: goducky ${{ env.VERSION }}
+          name: GoDucky ${{ env.VERSION }}
           files: dist/*
           generate_release_notes: true
           draft: false
-          prerelease: ${{ env.PRERELEASE }}
+          prerelease: false
           fail_on_unmatched_files: true
 
       - name: Upload checksums as artifact

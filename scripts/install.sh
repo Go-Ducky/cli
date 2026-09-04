@@ -86,18 +86,31 @@ if [[ "$OS" == "Darwin" ]]; then
   fi
 fi
 
+# append_line <file> <line> -- appends a marker line at most once.
+append_line() {
+  local file="$1" line="$2"
+  [ -f "$file" ] || touch "$file"
+  grep -qF "$line" "$file" && return 0
+  printf '\n# GoDucky CLI\n%s\n' "$line" >> "$file"
+  info "Added $BIN_DIR to PATH in $file"
+}
+
+# auto-add the install dir to PATH for the user's shell (idempotent).
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-  SHELL_RC=""
-  case "$SHELL" in
-    *zsh) SHELL_RC="$HOME/.zshrc" ;;
-    *bash) SHELL_RC="$HOME/.bashrc" ;;
+  SHELL_NAME="$(basename "${SHELL:-}")"
+  case "$SHELL_NAME" in
+    fish)
+      append_line "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" "set -gx PATH \"$BIN_DIR\" \$PATH" ;;
+    zsh)
+      append_line "$HOME/.zshrc" "export PATH=\"$BIN_DIR:\$PATH\""
+      [ -f "$HOME/.zprofile" ] && append_line "$HOME/.zprofile" "export PATH=\"$BIN_DIR:\$PATH\"" ;;
+    *)
+      append_line "$HOME/.bashrc" "export PATH=\"$BIN_DIR:\$PATH\""
+      [ -f "$HOME/.bash_profile" ] && append_line "$HOME/.bash_profile" "export PATH=\"$BIN_DIR:\$PATH\""
+      append_line "$HOME/.profile" "export PATH=\"$BIN_DIR:\$PATH\"" ;;
   esac
-  if [[ -n "$SHELL_RC" ]]; then
-    printf '\n# GoDucky CLI\nexport PATH="%s:$PATH"\n' "$BIN_DIR" >> "$SHELL_RC"
-    info "Added $BIN_DIR to PATH in $SHELL_RC"
-  else
-    warn "Add $BIN_DIR to your PATH manually."
-  fi
+else
+  info "$BIN_DIR already on PATH"
 fi
 
 info "Verifying install..."

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/Go-Ducky/cli/internal/config"
@@ -20,10 +21,15 @@ type Ollama struct {
 	client *http.Client
 }
 
-// NewOllama creates an Ollama provider from config.
+// NewOllama creates an Ollama provider from config. The OLLAMA_HOST
+// environment variable overrides the configured host.
 func NewOllama(cfg *config.Config) *Ollama {
+	host := cfg.Ollama.Host
+	if env := os.Getenv("OLLAMA_HOST"); env != "" {
+		host = env
+	}
 	return &Ollama{
-		host:   cfg.Ollama.Host,
+		host:   host,
 		model:  cfg.Ollama.Model,
 		client: &http.Client{},
 	}

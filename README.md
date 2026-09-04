@@ -1,6 +1,6 @@
-# GoDucky CLI
+# GoDucky
 
-A terminal-based AI agent written in Go. It reads, writes, and edits files, runs
+A terminal-based AI coding agent written in Go. It reads, writes, and edits files, runs
 shell commands, and searches your codebase. It works with local models via Ollama or any
 of the common cloud providers (OpenAI, Anthropic, Gemini, Groq, plus anything that speaks
 the OpenAI-compatible API).
@@ -22,7 +22,16 @@ $env:PATH += ";$dir"
 setx PATH "$env:PATH;$dir"
 ```
 
-Ig Windows warns when you first run it
+Or run the installer script, which downloads the right binary and adds it to your
+user PATH automatically (works in the current terminal too):
+
+```powershell
+irm https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/install.ps1 -OutFile "$env:TEMP\goducky-install.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\goducky-install.ps1"
+```
+
+If Windows warns when you first run it, right-click `goducky.exe` in Explorer and
+choose *Properties → Unblock*.
 
 ### macOS
 
@@ -33,6 +42,9 @@ curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/install.s
 ### Linux
 
 Same curl installer as above.
+
+The installers add `goducky` to your shell PATH automatically (bash, zsh, fish, or
+`~/.profile`) — open a new terminal and `goducky` just works.
 
 ## Shell completion
 
@@ -145,6 +157,7 @@ Settings live in `~/.config/goducky/config.json` (macOS:
 
 ```
 /help           Show help
+/config         View or edit configuration keys
 /provider <n>   Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)
 /providers      List providers
 /model <name>   Set the model for the current provider
@@ -152,6 +165,12 @@ Settings live in `~/.config/goducky/config.json` (macOS:
 /clear          Clear the conversation
 /exit           Quit
 ```
+
+You can also edit config from inside the TUI without touching the file:
+`/config` shows the current values, and `/config <key> <value>` saves a change.
+Keys are the dotted JSON paths, e.g. `provider`, `ollama.host`,
+`openrouter.model`, or `agent.auto_approve`. Provider and model changes are
+applied immediately; everything else is picked up on the next run.
 
 ### Flags
 
@@ -190,9 +209,10 @@ GitHub Actions builds and releases binaries automatically on every push (see
 
 ## Releases
 
-Push a tag (`v1.0.0`) and the GitHub Actions workflow cross-compiles all platforms and
-publishes a release (see `.github/workflows/release.yml`). The installers and package
-manifests pull from that release.
+Every push to `main` builds all platforms and publishes a release named
+`GoDucky <version>` (e.g. `GoDucky 0.1.0-dev.abcd123`) marked as **Latest**, with
+change notes generated from merged commits. Push a `v1.0.0` tag for a stable release.
+See `.github/workflows/release.yml`. The installers pull from that release.
 
 ## License
 
