@@ -35,16 +35,17 @@ fi
 ASSET="goducky-${TARGET_OS}-${TARGET_ARCH}"
 
 if [[ "$VERSION" == "latest" ]]; then
-  REPO_API="https://api.github.com/repos/$REPO/releases/latest"
-  VERSION="$(curl -fsSL "$REPO_API" | grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*"tag_name": *"//; s/"$//')"
-  if [[ -z "$VERSION" ]]; then
+  RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=1" || true)"
+  TAG="$(printf '%s' "$RELEASE_JSON" | grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*"tag_name": *"//; s/"$//')"
+  if [[ -z "$TAG" ]]; then
     error "Could not determine latest version"
   fi
-  VERSION="${VERSION#v}"
-  info "Latest version: $VERSION"
+  info "Latest release: $TAG"
+else
+  TAG="v${VERSION}"
 fi
 
-BINARY_URL="https://github.com/$REPO/releases/download/v${VERSION}/${ASSET}"
+BINARY_URL="https://github.com/$REPO/releases/download/${TAG}/${ASSET}"
 DOWNLOAD_URL="$BINARY_URL"
 EXT=""
 
@@ -74,6 +75,16 @@ mkdir -p "$BIN_DIR"
 
 info "Installing to $BIN_DIR/goducky"
 install -m 755 "$TMP_DIR/goducky" "$BIN_DIR/goducky"
+
+# macOS Gatekeeper: downloaded binaries are quarantined and flagged as unsigned,
+# which blocks the first run. Clear the quarantine flag and ad-hoc sign so the
+# binary runs on both Apple Silicon (arm64) and Intel (amd64).
+if [[ "$OS" == "Darwin" ]]; then
+  xattr -d com.apple.quarantine "$BIN_DIR/goducky" 2>/dev/null || true
+  if command -v codesign >/dev/null 2>&1; then
+    codesign -s - --force "$BIN_DIR/goducky" 2>/dev/null || true
+  fi
+fi
 
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
   SHELL_RC=""
