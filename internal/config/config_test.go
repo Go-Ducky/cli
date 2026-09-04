@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,9 @@ func TestDefaults(t *testing.T) {
 	}
 	if c.OpenRouter.EnvKey != "OPENROUTER_API_KEY" {
 		t.Fatalf("default openrouter env key mismatch: %q", c.OpenRouter.EnvKey)
+	}
+	if !strings.HasSuffix(c.OpenRouter.Model, ":free") {
+		t.Fatalf("default openrouter model should be a free model, got %q", c.OpenRouter.Model)
 	}
 	if c.Agent.MaxIterations == 0 {
 		t.Fatal("default max iterations should be non-zero")

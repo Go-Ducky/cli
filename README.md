@@ -86,6 +86,14 @@ goducky --login openrouter  # many models in one place, incl. free ones
 goducky --provider openrouter
 ```
 
+OpenRouter defaults to a **free coding model** (`qwen/qwen3-coder:free`) — no credit
+card needed for the `:free` variants. If a specific free model ever gets pulled off
+the roster, use `openrouter/free` (OpenRouter's auto-router, always resolves):
+
+```bash
+goducky --provider openrouter --model openrouter/free
+```
+
 ```bash
 goducky --login openai
 goducky --login anthropic
@@ -123,7 +131,7 @@ Settings live in `~/.config/goducky/config.json` (macOS:
   "model": "qwen2.5-coder:7b",
   "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:7b" },
   "groq": { "model": "llama-3.3-70b-versatile" },
-  "openrouter": { "base_url": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini", "env_key": "OPENROUTER_API_KEY" },
+  "openrouter": { "base_url": "https://openrouter.ai/api/v1", "model": "qwen/qwen3-coder:free", "env_key": "OPENROUTER_API_KEY" },
   "openai": { "base_url": "https://api.openai.com/v1", "model": "gpt-4o", "env_key": "OPENAI_API_KEY" },
   "anthropic": { "model": "claude-3-5-sonnet-latest", "env_key": "ANTHROPIC_API_KEY" },
   "gemini": { "model": "gemini-1.5-pro", "env_key": "GEMINI_API_KEY" },

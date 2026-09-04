@@ -87,7 +87,7 @@ func Default() *Config {
 		},
 		OpenRouter: OpenAIConfig{
 			BaseURL: "https://openrouter.ai/api/v1",
-			Model:   "openai/gpt-4o-mini",
+			Model:   "qwen/qwen3-coder:free",
 			EnvKey:  "OPENROUTER_API_KEY",
 		},
 		Anthropic: AnthropicConfig{

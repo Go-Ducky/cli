@@ -123,7 +123,7 @@ func providerDefaultModel(provider string) string {
 	case "openai":
 		return "gpt-4o-mini"
 	case "openrouter":
-		return "openai/gpt-4o-mini"
+		return "qwen/qwen3-coder:free"
 	case "anthropic":
 		return "claude-3-5-haiku-latest"
 	case "gemini":

@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-Watches the Go source and rebuilds the goducky binary automatically whenever a
-.go file, go.mod, or go.sum changes. Run from a terminal in the repo root:
+Watches the Go source and rebuilds automatically whenever a .go file, go.mod,
+or go.sum changes. Rebuilds the local goducky.exe AND all platform binaries in
+dist/ (via build.ps1). Run from a terminal in the repo root:
 
     powershell -ExecutionPolicy Bypass -File scripts\watch.ps1
 
@@ -9,7 +10,8 @@ Press Ctrl+C to stop.
 #>
 [CmdletBinding()]
 param(
-    [string]$Output = "goducky.exe"
+    [string]$Output = "goducky.exe",
+    [switch]$SkipDist
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +33,11 @@ function Invoke-Build {
         }
     } finally {
         Pop-Location
+    }
+    if (-not $SkipDist) {
+        Write-Host "[watch] rebuilding dist/ for all platforms..." -ForegroundColor DarkGray
+        & (Join-Path $PSScriptRoot "build.ps1")
+        Write-Host "[watch] dist/ done" -ForegroundColor Green
     }
 }
 
