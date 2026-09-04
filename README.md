@@ -1,6 +1,6 @@
-# GoDucky
+# GoDucky CLI
 
-A terminal-based AI coding agent written in Go. It reads, writes, and edits files, runs
+A terminal-based AI agent written in Go. It reads, writes, and edits files, runs
 shell commands, and searches your codebase. It works with local models via Ollama or any
 of the common cloud providers (OpenAI, Anthropic, Gemini, Groq, plus anything that speaks
 the OpenAI-compatible API).
