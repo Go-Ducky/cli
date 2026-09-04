@@ -148,7 +148,7 @@ func run() error {
 	}
 
 	m := tui.New(a, workDir, providerLabel(cfg.Provider), modelName, cfg, auth)
-	prog := tea.NewProgram(m, tea.WithAltScreen())
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.SetProgram(prog)
 	if _, err := prog.Run(); err != nil {
 		return err

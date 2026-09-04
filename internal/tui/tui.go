@@ -38,6 +38,7 @@ type approvalAnswerMsg struct {
 type transcriptItem struct {
 	kind string // user | assistant | tool
 	text string
+	meta bool // system greeting lines, rendered without a label and excluded from model context
 }
 
 type model struct {
@@ -97,8 +98,8 @@ func New(a *agent.Agent, workDir, providerName, modelName string, cfg *config.Co
 func (m *model) SetProgram(p *tea.Program) { m.program = p }
 
 func (m *model) Init() tea.Cmd {
-	m.addItem("assistant", m.assistantName()+" ready. Type a message or /help. Ctrl+C to quit.")
-	m.addItem("assistant", fmt.Sprintf("Provider: %s  Model: %s  Dir: %s", m.provider, m.modelName, m.workDir))
+	m.addMetaItem("assistant", m.assistantName()+" ready. Type a message or /help. Ctrl+C to quit.")
+	m.addMetaItem("assistant", fmt.Sprintf("Provider: %s  Model: %s  Dir: %s", m.provider, m.modelName, m.workDir))
 	m.input.Focus()
 	return tea.Batch(tea.EnterAltScreen, textarea.Blink)
 }
@@ -119,27 +120,43 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.running {
-			if msg.String() == "ctrl+c" {
-				return m, tea.Quit
-			}
-			if msg.String() == "pgup" {
-				m.viewport.LineUp(viewportMouseWheelDelta)
-			}
-			if msg.String() == "pgdown" {
-				m.viewport.LineDown(viewportMouseWheelDelta)
-			}
-			return m, nil
-		}
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "pgup":
+			m.viewport.LineUp(viewportMouseWheelDelta)
+			return m, nil
+		case "pgdown":
+			m.viewport.LineDown(viewportMouseWheelDelta)
+			return m, nil
+		case "home":
+			m.viewport.GotoTop()
+			return m, nil
+		case "end":
+			m.viewport.GotoBottom()
+			return m, nil
+		}
+		if m.running {
+			return m, nil
 		}
 
+	case tea.MouseMsg:
+		if m.viewport.Height > 0 {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		return m, tea.Batch(cmds...)
+
 	case streamMsg:
+		atBottom := m.viewport.AtBottom()
 		m.current += msg.text
 		m.viewport.SetContent(m.renderBody())
-		m.viewport.GotoBottom()
+		if atBottom {
+			m.viewport.GotoBottom()
+		}
 		return m, nil
 
 	case statusMsg:
@@ -257,16 +274,23 @@ func (m *model) addItem(kind, text string) {
 	m.items = append(m.items, transcriptItem{kind: kind, text: text})
 }
 
+func (m *model) addMetaItem(kind, text string) {
+	m.items = append(m.items, transcriptItem{kind: kind, text: text, meta: true})
+}
+
 func (m *model) renderBody() string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Render("Quack2") + "\n")
 	for _, it := range m.items {
 		switch it.kind {
 		case "user":
 			sb.WriteString("\n" + userStyle.Render("You:") + "\n" + it.text + "\n")
 		case "assistant":
 			if it.text != "" {
-				sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + it.text + "\n")
+				if it.meta {
+					sb.WriteString("\n" + it.text + "\n")
+				} else {
+					sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + it.text + "\n")
+				}
 			}
 		case "tool":
 			sb.WriteString("\n" + toolStyle.Render(it.text) + "\n")
@@ -458,13 +482,13 @@ Controls:
 func (m *model) toProviderMessages() []provider.Message {
 	var out []provider.Message
 	for _, it := range m.items {
+		if it.meta {
+			continue
+		}
 		switch it.kind {
 		case "user":
 			out = append(out, provider.NewTextMessage(provider.RoleUser, it.text))
 		case "assistant":
-			if strings.HasPrefix(it.text, m.assistantName()+" ready") {
-				continue
-			}
 			out = append(out, provider.NewTextMessage(provider.RoleAssistant, it.text))
 		}
 	}
