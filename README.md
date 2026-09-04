@@ -103,10 +103,6 @@ Settings live in `~/.config/goducky/config.json` (macOS:
 {
   "provider": "ollama",
   "model": "qwen2.5-coder:7b",
-  "persona": {
-    "name": "Big Pickle",
-    "prompt": "Concise terminal-native coding assistant. Verify your work."
-  },
   "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:7b" },
   "groq": { "model": "llama-3.3-70b-versatile" },
   "openai": { "base_url": "https://api.openai.com/v1", "model": "gpt-4o", "env_key": "OPENAI_API_KEY" },
@@ -115,12 +111,6 @@ Settings live in `~/.config/goducky/config.json` (macOS:
   "agent": { "auto_approve": false }
 }
 ```
-
-### Persona
-
-The `persona` block controls the assistant's display name and its personality. `name` is
-what shows up as the label in the TUI; `prompt` is extra system instructions appended to
-the model prompt. Change it, rebuild, and the assistant picks up the new identity.
 
 ## Usage
 

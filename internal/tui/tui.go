@@ -81,6 +81,7 @@ func New(a *agent.Agent, workDir, providerName, modelName string, cfg *config.Co
 	ta.CharLimit = 10000
 	ta.ShowLineNumbers = false
 	ta.SetWidth(80)
+	ta.SetHeight(1)
 	return &model{
 		input:     ta,
 		agent:     a,
@@ -96,8 +97,8 @@ func New(a *agent.Agent, workDir, providerName, modelName string, cfg *config.Co
 func (m *model) SetProgram(p *tea.Program) { m.program = p }
 
 func (m *model) Init() tea.Cmd {
-	m.addItem("assistant", m.personaName()+" ready. Type a message or /help. Ctrl+C to quit.")
-	m.addItem("assistant", fmt.Sprintf("Persona: %s  Provider: %s  Model: %s  Dir: %s", m.personaName(), m.provider, m.modelName, m.workDir))
+	m.addItem("assistant", m.assistantName()+" ready. Type a message or /help. Ctrl+C to quit.")
+	m.addItem("assistant", fmt.Sprintf("Provider: %s  Model: %s  Dir: %s", m.provider, m.modelName, m.workDir))
 	m.input.Focus()
 	return tea.Batch(tea.EnterAltScreen, textarea.Blink)
 }
@@ -258,30 +259,27 @@ func (m *model) addItem(kind, text string) {
 
 func (m *model) renderBody() string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Render("GoDucky CLI (Big Pickle)") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Render("Quack2") + "\n")
 	for _, it := range m.items {
 		switch it.kind {
 		case "user":
 			sb.WriteString("\n" + userStyle.Render("You:") + "\n" + it.text + "\n")
 		case "assistant":
 			if it.text != "" {
-				sb.WriteString("\n" + assistantStyle.Render(m.personaName()+":") + "\n" + it.text + "\n")
+				sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + it.text + "\n")
 			}
 		case "tool":
 			sb.WriteString("\n" + toolStyle.Render(it.text) + "\n")
 		}
 	}
 	if m.current != "" {
-		sb.WriteString("\n" + assistantStyle.Render(m.personaName()+":") + "\n" + m.current)
+		sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + m.current)
 	}
 	return sb.String()
 }
 
-func (m *model) personaName() string {
-	if m.cfg != nil && m.cfg.Persona.Name != "" {
-		return m.cfg.Persona.Name
-	}
-	return "Big Pickle"
+func (m *model) assistantName() string {
+	return agent.AssistantName
 }
 
 func (m *model) View() string {
@@ -464,7 +462,7 @@ func (m *model) toProviderMessages() []provider.Message {
 		case "user":
 			out = append(out, provider.NewTextMessage(provider.RoleUser, it.text))
 		case "assistant":
-			if strings.HasPrefix(it.text, m.personaName()+" ready") || strings.HasPrefix(it.text, "Persona: ") {
+			if strings.HasPrefix(it.text, m.assistantName()+" ready") {
 				continue
 			}
 			out = append(out, provider.NewTextMessage(provider.RoleAssistant, it.text))

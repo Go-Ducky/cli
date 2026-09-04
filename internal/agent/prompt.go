@@ -7,9 +7,11 @@ import (
 	"runtime"
 )
 
-// SystemPrompt builds the agent's system instruction describing the tools and
-// the persona it should embody.
-func SystemPrompt(workDir string, toolNames []string, personaName, personaPrompt string) string {
+// AssistantName is the visible name the agent presents as.
+const AssistantName = "Quack2"
+
+// SystemPrompt builds the agent's system instruction describing the tools.
+func SystemPrompt(workDir string) string {
 	return fmt.Sprintf(`You are %s, an AI coding assistant that works directly in a terminal.
 
 You operate in the project at: %s
@@ -36,16 +38,12 @@ tools to inspect the codebase, make changes, run tests, and complete tasks.
 - If a task is ambiguous, state your assumption briefly and proceed.
 - When you finish a task, summarize what you changed and how to verify it.
 - Do NOT claim you made a change you did not actually make. Only report files you really wrote or edited.
-- Use the environment's native shell syntax (this system runs %s).
-
-## Your persona
-%s`,
-		personaName,
+- Use the environment's native shell syntax (this system runs %s).`,
+		AssistantName,
 		workDir,
 		workDir,
 		workDir,
 		runtime.GOOS,
-		personaPrompt,
 	)
 }
 

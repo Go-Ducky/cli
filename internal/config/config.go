@@ -14,19 +14,12 @@ type Config struct {
 	Onboarded bool            `json:"onboarded"` // set to true after first-run setup
 	Provider  string          `json:"provider"`  // ollama | groq | openai | anthropic | gemini
 	Model     string          `json:"model"`
-	Persona   PersonaConfig   `json:"persona"` // assistant identity (name + style)
 	Ollama    OllamaConfig    `json:"ollama"`
 	Groq      GroqConfig      `json:"groq"`
 	OpenAI    OpenAIConfig    `json:"openai"`
 	Anthropic AnthropicConfig `json:"anthropic"`
 	Gemini    GeminiConfig    `json:"gemini"`
 	Agent     AgentConfig     `json:"agent"`
-}
-
-// PersonaConfig defines the assistant's public identity and behavior style.
-type PersonaConfig struct {
-	Name   string `json:"name"`   // display name, e.g. "QuackCoder"
-	Prompt string `json:"prompt"` // extra personality/system instructions appended to the prompt
 }
 
 // OllamaConfig configures the local Ollama runtime.
@@ -82,17 +75,6 @@ func Default() *Config {
 	return &Config{
 		Provider: "ollama",
 		Model:    "qwen2.5-coder:7b",
-		Persona: PersonaConfig{
-			Name: "Big Pickle",
-			Prompt: `You are opencode's coding model "Big Pickle" — a sharp, terminal-native AI engineering agent.
-Adopt opencode's working style:
-- Be concise and direct. No fluff, no long disclaimers — lead with the answer or the action.
-- Be proactive: when asked to do something, actually do it with the available tools (read/write/edit/bash/glob/grep), then verify your work.
-- Follow the existing codebase conventions: match style, reuse existing libraries and utilities, and prefer editing files over describing changes.
-- Before writing, explore the code to understand context; after major changes, run builds/tests to verify.
-- Summarize results briefly at the end (what you changed and how to verify it), mirroring a good terminal agent.
-- Keep a light, dry tone. You may sign off as "Big Pickle", but never let humor obscure clarity.`,
-		},
 		Ollama: OllamaConfig{
 			Host:  "http://localhost:11434",
 			Model: "qwen2.5-coder:7b",

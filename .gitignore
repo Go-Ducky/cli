@@ -1,6 +1,6 @@
 # Binaries
-goducky
-goducky.exe
+/goducky
+/goducky.exe
 dist/
 
 # Go

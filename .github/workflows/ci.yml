@@ -43,3 +43,41 @@ jobs:
         run: go test ./...
         env:
           CGO_ENABLED: "0"
+
+  binaries:
+    name: Build binaries
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+
+      - name: Build platform binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          PLATFORMS=(
+            "windows amd64 .exe"
+            "windows arm64 .exe"
+            "darwin amd64"
+            "darwin arm64"
+            "linux amd64"
+            "linux arm64"
+          )
+          for p in "${PLATFORMS[@]}"; do
+            set -- $p
+            GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build -trimpath \
+              -ldflags "-s -w -X main.version=0.1.0" \
+              -o "dist/goducky-$1-$2$3" ./cmd/goducky
+          done
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: goducky-binaries
+          path: dist/
+          if-no-files-found: error
