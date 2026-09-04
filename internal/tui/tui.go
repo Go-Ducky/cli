@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Go-Ducky/goducky-cli/internal/agent"
-	"github.com/Go-Ducky/goducky-cli/internal/config"
-	"github.com/Go-Ducky/goducky-cli/internal/provider"
+	"github.com/Go-Ducky/cli/internal/agent"
+	"github.com/Go-Ducky/cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/provider"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"

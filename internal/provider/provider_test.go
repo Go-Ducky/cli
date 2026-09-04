@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Go-Ducky/goducky-cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/config"
 )
 
 func TestResolveModelForProviders(t *testing.T) {

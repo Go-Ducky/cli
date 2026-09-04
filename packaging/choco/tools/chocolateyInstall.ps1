@@ -9,7 +9,7 @@ if ($arch -eq 'ARM64') {
     $asset = 'goducky-windows-amd64.exe'
 }
 
-$url = "https://github.com/Go-Ducky/goducky-cli/releases/latest/download/$asset"
+$url = "https://github.com/Go-Ducky/cli/releases/latest/download/$asset"
 
 # Download the release binary
 $exe = Join-Path $toolsDir 'goducky.exe'

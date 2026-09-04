@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Go-Ducky/goducky-cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/config"
 )
 
 // Role identifies who authored a message.

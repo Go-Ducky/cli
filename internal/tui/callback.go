@@ -3,9 +3,9 @@ package tui
 import (
 	"encoding/json"
 
-	"github.com/Go-Ducky/goducky-cli/internal/agent"
-	"github.com/Go-Ducky/goducky-cli/internal/agent/tools"
-	"github.com/Go-Ducky/goducky-cli/internal/provider"
+	"github.com/Go-Ducky/cli/internal/agent"
+	"github.com/Go-Ducky/cli/internal/agent/tools"
+	"github.com/Go-Ducky/cli/internal/provider"
 )
 
 // tuiCallback implements agent.Callback, feeding messages back into the TUI

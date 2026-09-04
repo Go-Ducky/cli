@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Go-Ducky/goducky-cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/config"
 )
 
 // Gemini is a provider for Google's Gemini API.

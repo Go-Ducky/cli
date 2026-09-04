@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Go-Ducky/goducky-cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/config"
 )
 
 // Ollama is a provider backed by the local Ollama runtime.

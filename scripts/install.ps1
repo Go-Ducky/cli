@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$Repo = 'Go-Ducky/goducky-cli'
+$Repo = 'Go-Ducky/cli'
 $InstallDir = Join-Path $HOME '.goducky\bin'
 $Version = 'latest'
 

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Go-Ducky/goducky-cli/internal/provider"
+	"github.com/Go-Ducky/cli/internal/provider"
 )
 
 // Context carries agent state and callbacks into tool execution.

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
-REPO="${DUCKY_REPO:-Go-Ducky/goducky-cli}"
+REPO="${DUCKY_REPO:-Go-Ducky/cli}"
 INSTALL_DIR="${DUCKY_INSTALL_DIR:-$HOME/.goducky/bin}"
 VERSION="${1:-$DEFAULT_VERSION}"
 

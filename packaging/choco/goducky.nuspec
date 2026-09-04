@@ -7,12 +7,12 @@
     <authors>Go-Ducky</authors>
     <owners>Go-Ducky</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <licenseUrl>https://github.com/Go-Ducky/goducky-cli/blob/main/LICENSE</licenseUrl>
-    <projectUrl>https://github.com/Go-Ducky/goducky-cli</projectUrl>
+    <licenseUrl>https://github.com/Go-Ducky/cli/blob/main/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/Go-Ducky/cli</projectUrl>
     <description>GoDucky CLI is an AI coding agent that runs in your terminal. It works with local models (Ollama) and API providers (OpenAI, Anthropic, Gemini).</description>
     <summary>AI coding agent for the terminal with local and API model support.</summary>
     <tags>ai coding cli agent terminal tui llm ollama openai anthropic gemini</tags>
-    <packageSourceUrl>https://github.com/Go-Ducky/goducky-cli</packageSourceUrl>
+    <packageSourceUrl>https://github.com/Go-Ducky/cli</packageSourceUrl>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

@@ -1,4 +1,4 @@
-module github.com/Go-Ducky/goducky-cli
+module github.com/Go-Ducky/cli
 
 go 1.27.0
 

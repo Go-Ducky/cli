@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Go-Ducky/goducky-cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/config"
 )
 
 const groqBaseURL = "https://api.groq.com/openai/v1"

@@ -5,13 +5,13 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="AI coding agent for the terminal (local + API models)"
 arch=('x86_64' 'aarch64')
-url="https://github.com/Go-Ducky/goducky-cli"
+url="https://github.com/Go-Ducky/cli"
 license=('MIT')
 depends=('glibc')
 conflicts=('goducky-bin')
 provides=('goducky')
-source_x86_64=("goducky-linux-amd64::https://github.com/Go-Ducky/goducky-cli/releases/download/v${pkgver}/goducky-linux-amd64")
-source_aarch64=("goducky-linux-arm64::https://github.com/Go-Ducky/goducky-cli/releases/download/v${pkgver}/goducky-linux-arm64")
+source_x86_64=("goducky-linux-amd64::https://github.com/Go-Ducky/cli/releases/download/v${pkgver}/goducky-linux-amd64")
+source_aarch64=("goducky-linux-arm64::https://github.com/Go-Ducky/cli/releases/download/v${pkgver}/goducky-linux-arm64")
 sha256sums_x86_64=('REPLACE_WITH_LINUX_AMD64_SHA256')
 sha256sums_aarch64=('REPLACE_WITH_LINUX_ARM64_SHA256')
 

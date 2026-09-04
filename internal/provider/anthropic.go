@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Go-Ducky/goducky-cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/config"
 )
 
 // Anthropic is a provider for Anthropic's Claude API.

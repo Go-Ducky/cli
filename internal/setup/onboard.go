@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Go-Ducky/goducky-cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/config"
 )
 
 // Onboard sets up GoDucky on first run: it ensures a model is available,

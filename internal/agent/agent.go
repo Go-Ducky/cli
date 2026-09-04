@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Go-Ducky/goducky-cli/internal/agent/tools"
-	"github.com/Go-Ducky/goducky-cli/internal/provider"
+	"github.com/Go-Ducky/cli/internal/agent/tools"
+	"github.com/Go-Ducky/cli/internal/provider"
 )
 
 // Callback is a hook the UI uses to observe agent activity.

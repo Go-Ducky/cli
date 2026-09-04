@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Go-Ducky/goducky-cli/internal/agent/tools"
-	"github.com/Go-Ducky/goducky-cli/internal/provider"
+	"github.com/Go-Ducky/cli/internal/agent/tools"
+	"github.com/Go-Ducky/cli/internal/provider"
 )
 
 // mockProvider simulates a model that first calls a tool, then answers.
