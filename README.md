@@ -11,16 +11,19 @@ One static binary. Runs on Windows, macOS, and Linux.
 
 ### Windows
 
-PowerShell one-liner:
+Download `goducky-windows-amd64.exe` (or `goducky-windows-arm64.exe` on ARM devices)
+from the [Releases](https://github.com/Go-Ducky/cli/releases) page, rename it to
+`goducky.exe`, and place it in a folder on your PATH:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/install.ps1 | iex"
+$dir = "$HOME\bin"; New-Item -ItemType Directory -Force $dir | Out-Null
+Move-Item goducky.exe "$dir\goducky.exe"
+$env:PATH += ";$dir"
+setx PATH "$env:PATH;$dir"
 ```
 
-Or via Chocolatey (`choco install goducky`) or Scoop.
-
-Manual: download `goducky-windows-amd64.exe` from the
-[Releases](https://github.com/Go-Ducky/cli/releases) page and rename it to `goducky.exe`.
+If Windows warns when you first run it, right-click `goducky.exe` in Explorer and
+choose *Properties → Unblock*.
 
 ### macOS
 
@@ -30,7 +33,23 @@ curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/install.s
 
 ### Linux
 
-Same curl installer as above, or the AUR package (`goducky-bin`).
+Same curl installer as above.
+
+## Shell completion
+
+```bash
+goducky completion bash        # or: zsh, fish, powershell
+```
+
+Enable it per shell:
+
+- **bash** — `source <(goducky completion bash)` (add that line to `~/.bashrc`)
+- **zsh** — `source <(goducky completion zsh)` (add to `~/.zshrc`)
+- **fish** — `goducky completion fish | source`
+- **PowerShell** — `goducky completion powershell | Out-String | Invoke-Expression` (add to your `$PROFILE`)
+
+Completes all flags (`--provider`, `--model`, `--login`, ...) and offers provider
+values.
 
 ## Quick start
 
@@ -133,6 +152,7 @@ goducky
   -yes               Auto-approve all tool actions
   -dir string        Working directory (default: current)
   -version           Print version and exit
+  completion <shell> Print a tab-completion script (bash, zsh, fish, powershell)
 ```
 
 ### Permissions
@@ -145,9 +165,13 @@ set `"auto_approve": true` in the config to skip the prompts.
 ```bash
 go mod download
 go build -o goducky ./cmd/goducky
-./scripts/build.sh     # cross-compile all platforms
+./scripts/build.ps1    # cross-compile all 6 platform binaries into dist/ (Windows)
+powershell -ExecutionPolicy Bypass -File scripts/watch.ps1   # auto-rebuild on save
 go test ./...
 ```
+
+GitHub Actions builds and releases binaries automatically on every push (see
+`.github/workflows/`).
 
 ## Releases
 

@@ -45,6 +45,10 @@ func run() error {
 		return nil
 	}
 
+	if len(flag.Args()) > 0 && flag.Args()[0] == "completion" {
+		return completionCmd(flag.Args()[1:])
+	}
+
 	if *apiKeyCmd != "" {
 		return saveAPIKey(*apiKeyCmd)
 	}

@@ -12,12 +12,14 @@ else { throw "Unsupported architecture: $Arch" }
 Write-Host "Installing GoDucky CLI" -ForegroundColor Cyan
 
 if ($Version -eq 'latest') {
-    $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
-    $Version = $Release.tag_name.TrimStart('v')
-    Write-Host "Latest version: $Version" -ForegroundColor Green
+    $Releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=1"
+    $Tag = $Releases[0].tag_name
+    $DownloadUrl = "https://github.com/$Repo/releases/download/$Tag/$Asset"
+    Write-Host "Latest release: $Tag" -ForegroundColor Green
+} else {
+    $Version = $Version.TrimStart('v')
+    $DownloadUrl = "https://github.com/$Repo/releases/download/v$Version/$Asset"
 }
-
-$DownloadUrl = "https://github.com/$Repo/releases/download/v$Version/$Asset"
 
 Write-Host "Downloading $Asset v$Version ..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
