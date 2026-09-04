@@ -11,15 +11,16 @@ import (
 
 // Config is the top-level user configuration.
 type Config struct {
-	Onboarded bool            `json:"onboarded"` // set to true after first-run setup
-	Provider  string          `json:"provider"`  // ollama | groq | openai | anthropic | gemini
-	Model     string          `json:"model"`
-	Ollama    OllamaConfig    `json:"ollama"`
-	Groq      GroqConfig      `json:"groq"`
-	OpenAI    OpenAIConfig    `json:"openai"`
-	Anthropic AnthropicConfig `json:"anthropic"`
-	Gemini    GeminiConfig    `json:"gemini"`
-	Agent     AgentConfig     `json:"agent"`
+	Onboarded  bool            `json:"onboarded"` // set to true after first-run setup
+	Provider   string          `json:"provider"`  // ollama | groq | openai | openai_compatible | anthropic | gemini | openrouter
+	Model      string          `json:"model"`
+	Ollama     OllamaConfig    `json:"ollama"`
+	Groq       GroqConfig      `json:"groq"`
+	OpenAI     OpenAIConfig    `json:"openai"`
+	OpenRouter OpenAIConfig    `json:"openrouter"`
+	Anthropic  AnthropicConfig `json:"anthropic"`
+	Gemini     GeminiConfig    `json:"gemini"`
+	Agent      AgentConfig     `json:"agent"`
 }
 
 // OllamaConfig configures the local Ollama runtime.
@@ -83,6 +84,11 @@ func Default() *Config {
 			BaseURL: "https://api.openai.com/v1",
 			Model:   "gpt-4o",
 			EnvKey:  "OPENAI_API_KEY",
+		},
+		OpenRouter: OpenAIConfig{
+			BaseURL: "https://openrouter.ai/api/v1",
+			Model:   "openai/gpt-4o-mini",
+			EnvKey:  "OPENROUTER_API_KEY",
 		},
 		Anthropic: AnthropicConfig{
 			Model:  "claude-3-5-sonnet-latest",
@@ -183,10 +189,11 @@ func (c *Config) Save() error {
 
 // Auth holds API keys, kept separate from config so they aren't committed.
 type Auth struct {
-	GroqAPIKey      string `json:"groq_api_key"`
-	OpenAIAPIKey    string `json:"openai_api_key"`
-	AnthropicAPIKey string `json:"anthropic_api_key"`
-	GeminiAPIKey    string `json:"gemini_api_key"`
+	GroqAPIKey        string `json:"groq_api_key"`
+	OpenAIAPIKey      string `json:"openai_api_key"`
+	OpenRouterAPIKey  string `json:"openrouter_api_key"`
+	AnthropicAPIKey   string `json:"anthropic_api_key"`
+	GeminiAPIKey      string `json:"gemini_api_key"`
 }
 
 // LoadAuth reads the auth file, returning zero-value if absent.

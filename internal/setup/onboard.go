@@ -80,18 +80,19 @@ func Onboard(cfg *config.Config) (providerName, modelName string, finished bool,
 	fmt.Println()
 	fmt.Println("Let's add a cloud provider instead (needs a free API key).")
 	fmt.Println("  * Groq      — fast, has a free tier, no credit card (recommended)")
+	fmt.Println("  * OpenRouter— many models in one place, incl. free ones")
 	fmt.Println("  * OpenAI    — ChatGPT models")
 	fmt.Println("  * Anthropic — Claude models")
 	fmt.Println("  * Gemini    — Google models")
 	for {
-		fmt.Print("Choose provider [groq/openai/anthropic/gemini/skip]: ")
+		fmt.Print("Choose provider [groq/openai/anthropic/gemini/openrouter/skip]: ")
 		choice, _ := reader.ReadString('\n')
 		choice = strings.ToLower(strings.TrimSpace(choice))
 		switch choice {
 		case "":
 			fmt.Println("  (no provider configured yet — you can add one later with `goducky --login <provider>`)")
 			return cfg.Provider, cfg.Model, false, nil
-		case "groq", "openai", "anthropic", "gemini":
+		case "groq", "openai", "anthropic", "gemini", "openrouter":
 			fmt.Print("Paste your API key: ")
 			key, _ := reader.ReadString('\n')
 			key = strings.TrimSpace(key)
@@ -109,7 +110,7 @@ func Onboard(cfg *config.Config) (providerName, modelName string, finished bool,
 		case "skip", "s", "later":
 			return cfg.Provider, cfg.Model, false, nil
 		default:
-			fmt.Println("  Please choose groq, openai, anthropic, gemini, or skip.")
+			fmt.Println("  Please choose groq, openai, anthropic, gemini, openrouter, or skip.")
 		}
 	}
 }
@@ -121,6 +122,8 @@ func providerDefaultModel(provider string) string {
 		return "llama-3.3-70b-versatile"
 	case "openai":
 		return "gpt-4o-mini"
+	case "openrouter":
+		return "openai/gpt-4o-mini"
 	case "anthropic":
 		return "claude-3-5-haiku-latest"
 	case "gemini":
@@ -143,6 +146,8 @@ func setCloudKey(cfg *config.Config, provider, key string) error {
 		auth.AnthropicAPIKey = key
 	case "gemini":
 		auth.GeminiAPIKey = key
+	case "openrouter":
+		auth.OpenRouterAPIKey = key
 	}
 	return auth.Save()
 }

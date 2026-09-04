@@ -58,11 +58,12 @@ Ollama and pull a local model (`qwen2.5-coder`) for you, or you can plug in a cl
 key. Groq is a good free starting point.
 
 ```bash
-goducky                                  # interactive TUI
+goducky                                                  # interactive TUI (default: local Ollama)
 goducky --dir /path/to/project
-goducky -p "explain this repo"           # one-shot, non-interactive
-goducky --models                         # list available models
-goducky --provider groq                  # skip the wizard, pick a provider
+goducky -p "explain this repo"                           # one-shot, non-interactive
+goducky --models                                         # list available models
+goducky --provider ollama                                # skip the wizard, use local models
+goducky --provider openrouter                            # cloud models (needs a key)
 ```
 
 ## Models
@@ -82,13 +83,19 @@ goducky --provider groq
 ```
 
 ```bash
+goducky --login openrouter  # many models in one place, incl. free ones
+goducky --provider openrouter
+```
+
+```bash
 goducky --login openai
 goducky --login anthropic
 goducky --login gemini
 ```
 
 You can also set the corresponding environment variables (`GROQ_API_KEY`,
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`) instead.
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+`GEMINI_API_KEY`) instead.
 
 Pick a model at launch:
 
@@ -117,6 +124,7 @@ Settings live in `~/.config/goducky/config.json` (macOS:
   "model": "qwen2.5-coder:7b",
   "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:7b" },
   "groq": { "model": "llama-3.3-70b-versatile" },
+  "openrouter": { "base_url": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini", "env_key": "OPENROUTER_API_KEY" },
   "openai": { "base_url": "https://api.openai.com/v1", "model": "gpt-4o", "env_key": "OPENAI_API_KEY" },
   "anthropic": { "model": "claude-3-5-sonnet-latest", "env_key": "ANTHROPIC_API_KEY" },
   "gemini": { "model": "gemini-1.5-pro", "env_key": "GEMINI_API_KEY" },
@@ -130,7 +138,7 @@ Settings live in `~/.config/goducky/config.json` (macOS:
 
 ```
 /help           Show help
-/provider <n>   Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini)
+/provider <n>   Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)
 /providers      List providers
 /model <name>   Set the model for the current provider
 /login          How to add a cloud API key
@@ -143,11 +151,11 @@ Settings live in `~/.config/goducky/config.json` (macOS:
 ```
 goducky
   -p string          Run a one-shot prompt and exit
-  -provider string   ollama | groq | openai | openai_compatible | anthropic | gemini
+  -provider string   ollama | groq | openai | openai_compatible | anthropic | gemini | openrouter
   -model string      Model name (overrides config)
   -base-url string   Base URL for OpenAI-compatible endpoints
   -key string        API key (overrides config/env)
-  -login string      Save an API key
+  -login string      Save an API key (groq|openai|openai_compatible|anthropic|gemini|openrouter)
   -models            List available models and exit
   -yes               Auto-approve all tool actions
   -dir string        Working directory (default: current)

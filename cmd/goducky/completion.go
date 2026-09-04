@@ -10,7 +10,7 @@ const bashCompletion = `_goducky() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     local flags="--version --models --yes --provider --model --base-url --key --login --dir -p --help"
-    local providers="ollama groq openai openai_compatible anthropic gemini"
+    local providers="ollama groq openai openai_compatible anthropic gemini openrouter"
     case "${prev}" in
         --provider|--login) COMPREPLY=( $(compgen -W "${providers}" -- "${cur}") ); return 0 ;;
     esac
@@ -27,11 +27,11 @@ const zshCompletion = `#compdef goducky
 _goducky() {
     _arguments \
         '(-p --p)'{-p,--p}'[run a one-shot prompt and exit]:prompt: ' \
-        '--provider[AI provider]:provider:(ollama groq openai openai_compatible anthropic gemini)' \
+        '--provider[AI provider]:provider:(ollama groq openai openai_compatible anthropic gemini openrouter)' \
         '--model[model name]:model: ' \
         '--base-url[base URL for OpenAI-compatible endpoints]:url: ' \
         '--key[API key]:key: ' \
-        '--login[save an API key for a provider]:provider:(groq openai anthropic gemini)' \
+        '--login[save an API key for a provider]:provider:(groq openai anthropic gemini openrouter)' \
         '--models[list available models]' \
         '--yes[auto-approve all tool actions]' \
         '--dir[working directory]:directory:_directories' \
@@ -43,11 +43,11 @@ _goducky "$@"
 
 const fishCompletion = `complete -c goducky -f
 complete -c goducky -l p -r -d 'run a one-shot prompt and exit'
-complete -c goducky -l provider -r -a 'ollama groq openai openai_compatible anthropic gemini' -d 'AI provider'
+complete -c goducky -l provider -r -a 'ollama groq openai openai_compatible anthropic gemini openrouter' -d 'AI provider'
 complete -c goducky -l model -r -d 'model name (overrides config)'
 complete -c goducky -l base-url -r -d 'base URL for OpenAI-compatible endpoints'
 complete -c goducky -l key -r -d 'API key (overrides config/env)'
-complete -c goducky -l login -r -a 'groq openai anthropic gemini' -d 'save an API key for a provider'
+complete -c goducky -l login -r -a 'groq openai anthropic gemini openrouter' -d 'save an API key for a provider'
 complete -c goducky -l dir -r -d 'working directory (default: current)'
 complete -c goducky -l models -d 'list available models and exit'
 complete -c goducky -l yes -d 'auto-approve all tool actions'
@@ -58,7 +58,7 @@ complete -c goducky -l help -d 'show help'
 const powershellCompletion = `Register-ArgumentCompleter -Native -CommandName goducky -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $flags = @('--version', '--models', '--yes', '--provider', '--model', '--base-url', '--key', '--login', '--dir', '-p', '--help')
-    $providers = @('ollama', 'groq', 'openai', 'openai_compatible', 'anthropic', 'gemini')
+    $providers = @('ollama', 'groq', 'openai', 'openai_compatible', 'anthropic', 'gemini', 'openrouter')
     $completions = @()
     if ($commandAst.CommandElements.Count -gt 1) {
         $prev = $commandAst.CommandElements[$commandAst.CommandElements.Count - 1].Text

@@ -8,7 +8,7 @@ import (
 )
 
 // AssistantName is the visible name the agent presents as.
-const AssistantName = "Quack2"
+const AssistantName = "GoDucky"
 
 // SystemPrompt builds the agent's system instruction describing the tools.
 func SystemPrompt(workDir string) string {

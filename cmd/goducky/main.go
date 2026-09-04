@@ -29,13 +29,13 @@ func main() {
 
 func run() error {
 	uniquePrompt := flag.String("p", "", "run a one-shot prompt and exit (non-interactive)")
-	providerFlag := flag.String("provider", "", "provider: ollama|groq|openai|openai_compatible|anthropic|gemini")
+	providerFlag := flag.String("provider", "", "provider: ollama|groq|openai|openai_compatible|anthropic|gemini|openrouter")
 	modelFlag := flag.String("model", "", "model name (overrides config)")
 	baseURLFlag := flag.String("base-url", "", "base URL for openai compatible endpoints")
 	keyFlag := flag.String("key", "", "API key (overrides config/env)")
 	listModels := flag.Bool("models", false, "list available models and exit")
 	autoApprove := flag.Bool("yes", false, "auto-approve all tool actions")
-	apiKeyCmd := flag.String("login", "", "save an API key for a provider (groq|openai|anthropic|gemini) and exit")
+	apiKeyCmd := flag.String("login", "", "save an API key for a provider (groq|openai|openai_compatible|anthropic|gemini|openrouter) and exit")
 	dir := flag.String("dir", "", "working directory (default: current)")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -96,6 +96,8 @@ func run() error {
 			cfg.Anthropic.APIKey = *keyFlag
 		case "gemini":
 			cfg.Gemini.APIKey = *keyFlag
+		case "openrouter":
+			cfg.OpenRouter.APIKey = *keyFlag
 		}
 	}
 
@@ -207,6 +209,8 @@ func saveAPIKey(providerName string) error {
 		auth.AnthropicAPIKey = key
 	case "gemini":
 		auth.GeminiAPIKey = key
+	case "openrouter":
+		auth.OpenRouterAPIKey = key
 	default:
 		return fmt.Errorf("unknown provider %q for login", providerName)
 	}
@@ -221,6 +225,8 @@ func providerLabel(p string) string {
 	switch p {
 	case "openai_compatible":
 		return "OpenAI-compatible"
+	case "openrouter":
+		return "OpenRouter"
 	default:
 		return p
 	}

@@ -125,6 +125,8 @@ func New(cfg *config.Config, auth *config.Auth) (Provider, error) {
 		return NewOpenAI(cfg, auth, false), nil
 	case "openai_compatible":
 		return NewOpenAI(cfg, auth, true), nil
+	case "openrouter":
+		return NewOpenRouter(cfg, auth), nil
 	case "anthropic":
 		return NewAnthropic(cfg, auth), nil
 	case "gemini":
@@ -147,6 +149,8 @@ func ResolveModel(cfg *config.Config, explicit string) string {
 		return cfg.Groq.Model
 	case strings.Contains(want, "openai"):
 		return cfg.OpenAI.Model
+	case strings.Contains(want, "openrouter"):
+		return cfg.OpenRouter.Model
 	case strings.Contains(want, "anthropic"):
 		return cfg.Anthropic.Model
 	case strings.Contains(want, "gemini"):

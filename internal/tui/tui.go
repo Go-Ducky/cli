@@ -404,7 +404,7 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 		m.addItem("assistant", providersHelp(m.cfg))
 	case "/login":
 		m.addItem("assistant",
-			"To add a cloud API key, quit and run:\n  goducky --login groq\n  goducky --login openai\n  goducky --login anthropic\n  goducky --login gemini\nThen start goducky again. Groq has a free tier.")
+			"To add a cloud API key, quit and run:\n  goducky --login openrouter\n  goducky --login groq\n  goducky --login openai\n  goducky --login anthropic\n  goducky --login gemini\nThen start goducky again. Groq has a free tier.")
 	case "/setup":
 		m.addItem("assistant", "Run `goducky` in a terminal after quitting to re-run setup, or pull a local model with `ollama pull qwen2.5-coder:7b`.")
 	case "/clear":
@@ -419,9 +419,9 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 // switchProvider rebuilds the backend from config for the named provider.
 func (m *model) switchProvider(name string) tea.Cmd {
 	name = strings.ToLower(strings.TrimSpace(name))
-	valid := map[string]bool{"ollama": true, "groq": true, "openai": true, "openai_compatible": true, "anthropic": true, "gemini": true}
+	valid := map[string]bool{"ollama": true, "groq": true, "openai": true, "openai_compatible": true, "anthropic": true, "gemini": true, "openrouter": true}
 	if !valid[name] {
-		m.addItem("assistant", "Unknown provider: "+name+"\nValid: ollama, groq, openai, openai_compatible, anthropic, gemini")
+		m.addItem("assistant", "Unknown provider: "+name+"\nValid: ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter")
 		return nil
 	}
 	oldProvider := m.agent.ProviderName()
@@ -454,6 +454,7 @@ func providersHelp(cfg *config.Config) string {
 	fmt.Fprintf(sb, "  ollama    : local, free (%s)\n", cfg.Ollama.Model)
 	fmt.Fprintf(sb, "  groq      : cloud, free tier (%s)\n", cfg.Groq.Model)
 	fmt.Fprintf(sb, "  openai    : cloud (%s)\n", cfg.OpenAI.Model)
+	fmt.Fprintf(sb, "  openrouter: cloud, many models (%s)\n", cfg.OpenRouter.Model)
 	fmt.Fprintf(sb, "  anthropic : cloud (%s)\n", cfg.Anthropic.Model)
 	fmt.Fprintf(sb, "  gemini    : cloud (%s)\n", cfg.Gemini.Model)
 	sb.WriteString("Route: /provider <name>  ·  Model: /model <name>")
@@ -463,7 +464,7 @@ func providersHelp(cfg *config.Config) string {
 func helpText() string {
 	return `Commands:
   /help            Show this help
-  /provider <name> Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini)
+  /provider <name> Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)
   /model <name>    Set the model for the current provider
   /providers       List providers and switch
   /login           How to add a cloud API key
