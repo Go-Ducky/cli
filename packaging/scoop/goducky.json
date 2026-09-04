@@ -1,0 +1,30 @@
+{
+  "version": "0.1.0",
+  "description": "AI coding agent for the terminal (local + API models)",
+  "homepage": "https://github.com/Go-Ducky/goducky-cli",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/Go-Ducky/goducky-cli/releases/download/v0.1.0/goducky-windows-amd64.exe",
+      "hash": "REPLACE_WITH_WINDOWS_SHA256"
+    },
+    "arm64": {
+      "url": "https://github.com/Go-Ducky/goducky-cli/releases/download/v0.1.0/goducky-windows-arm64.exe",
+      "hash": "REPLACE_WITH_WINDOWS_ARM64_SHA256"
+    }
+  },
+  "bin": "goducky.exe",
+  "checkver": {
+    "github": "https://github.com/Go-Ducky/goducky-cli"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/Go-Ducky/goducky-cli/releases/download/v$version/goducky-windows-amd64.exe"
+      },
+      "arm64": {
+        "url": "https://github.com/Go-Ducky/goducky-cli/releases/download/v$version/goducky-windows-arm64.exe"
+      }
+    }
+  }
+}

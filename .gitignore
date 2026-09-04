@@ -1,0 +1,25 @@
+# Binaries
+goducky
+goducky.exe
+dist/
+
+# Go
+*.exe
+*.test
+*.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local config / keys
+config.json
+auth.json
+
+# Node (if present)
+node_modules/

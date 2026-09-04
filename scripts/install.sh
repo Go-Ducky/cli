@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_VERSION="latest"
+REPO="${DUCKY_REPO:-Go-Ducky/goducky-cli}"
+INSTALL_DIR="${DUCKY_INSTALL_DIR:-$HOME/.goducky/bin}"
+VERSION="${1:-$DEFAULT_VERSION}"
+
+info()  { printf "  \033[1;32m>\033[0m %s\n" "$*"; }
+warn()  { printf "  \033[1;33m!\033[0m %s\n" "$*"; }
+error() { printf "  \033[1;31mX\033[0m %s\n" "$*" >&2; exit 1; }
+
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+
+case "$OS" in
+  Linux)  GOOS="linux" ;;
+  Darwin) GOOS="darwin" ;;
+  *) error "Unsupported OS: $OS (supported: linux, macos)" ;;
+esac
+
+case "$ARCH" in
+  x86_64|amd64) GOARCH="amd64" ;;
+  aarch64|arm64) GOARCH="arm64" ;;
+  *) error "Unsupported architecture: $ARCH" ;;
+esac
+
+TARGET_OS="$GOOS"
+TARGET_ARCH="$GOARCH"
+if [[ "$GOOS" == "darwin" && "$GOARCH" == "arm64" ]]; then
+  TARGET_OS="darwin"
+  TARGET_ARCH="arm64"
+fi
+
+ASSET="goducky-${TARGET_OS}-${TARGET_ARCH}"
+
+if [[ "$VERSION" == "latest" ]]; then
+  REPO_API="https://api.github.com/repos/$REPO/releases/latest"
+  VERSION="$(curl -fsSL "$REPO_API" | grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*"tag_name": *"//; s/"$//')"
+  if [[ -z "$VERSION" ]]; then
+    error "Could not determine latest version"
+  fi
+  VERSION="${VERSION#v}"
+  info "Latest version: $VERSION"
+fi
+
+BINARY_URL="https://github.com/$REPO/releases/download/v${VERSION}/${ASSET}"
+DOWNLOAD_URL="$BINARY_URL"
+EXT=""
+
+if ! curl -fsSL -o /dev/null --range 0-0 "$BINARY_URL" 2>/dev/null; then
+	DOWNLOAD_URL="${BINARY_URL}.zip"
+  EXT=".zip"
+fi
+
+info "Downloading $ASSET v$VERSION"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+if ! curl -fsSL -o "$TMP_DIR/goducky" "$DOWNLOAD_URL"; then
+  error "Failed to download $DOWNLOAD_URL"
+fi
+
+if [[ "$EXT" == ".zip" ]]; then
+  (cd "$TMP_DIR" && unzip -o goducky >/dev/null && rm -f goducky)
+  BIN="$(find "$TMP_DIR" -type f -name 'goducky*' | head -1)"
+  mv "$BIN" "$TMP_DIR/goducky"
+fi
+
+install_dir="$(cd "$HOME" && pwd)/.goducky"
+BIN_DIR="${DUCKY_INSTALL_DIR:-$INSTALL_DIR}"
+BIN_DIR="${BIN_DIR/#\~/$HOME}"
+mkdir -p "$BIN_DIR"
+
+info "Installing to $BIN_DIR/goducky"
+install -m 755 "$TMP_DIR/goducky" "$BIN_DIR/goducky"
+
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+  SHELL_RC=""
+  case "$SHELL" in
+    *zsh) SHELL_RC="$HOME/.zshrc" ;;
+    *bash) SHELL_RC="$HOME/.bashrc" ;;
+  esac
+  if [[ -n "$SHELL_RC" ]]; then
+    printf '\n# GoDucky CLI\nexport PATH="%s:$PATH"\n' "$BIN_DIR" >> "$SHELL_RC"
+    info "Added $BIN_DIR to PATH in $SHELL_RC"
+  else
+    warn "Add $BIN_DIR to your PATH manually."
+  fi
+fi
+
+info "Verifying install..."
+if "$BIN_DIR/goducky" --version; then
+  info "GoDucky CLI installed successfully! Run 'goducky' to start."
+else
+  error "Installation verification failed"
+fi
