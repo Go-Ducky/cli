@@ -22,8 +22,7 @@ $env:PATH += ";$dir"
 setx PATH "$env:PATH;$dir"
 ```
 
-If Windows warns when you first run it, right-click `goducky.exe` in Explorer and
-choose *Properties → Unblock*.
+Ig Windows warns when you first run it
 
 ### macOS
 
