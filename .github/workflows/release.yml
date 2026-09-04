@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -23,9 +23,22 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Extract version from tag
+      - name: Determine version and release tag
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            TAG="${GITHUB_REF_NAME}"
+            PRERELEASE="false"
+          else
+            SHORT="$(git rev-parse --short HEAD)"
+            VERSION="0.1.0-dev.${SHORT}"
+            TAG="dev-${SHORT}"
+            PRERELEASE="true"
+          fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "PRERELEASE=${PRERELEASE}" >> "$GITHUB_ENV"
 
       - name: Build platform binaries
         run: |
@@ -43,7 +56,7 @@ jobs:
             set -- $p
             GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build -trimpath \
               -ldflags "-s -w -X main.version=${VERSION}" \
-              -o "dist/goducky-$1-$2$3" ./cmd/goducky
+              -o "dist/goducky-$1-$2${3:-}" ./cmd/goducky
           done
 
       - name: Create universal macOS binary (lipo)
@@ -61,14 +74,27 @@ jobs:
           sha256sum * > checksums.txt
           cat checksums.txt
 
+      - name: Prune old dev releases
+        if: env.PRERELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tag in $(gh release list --json tagName --jq '.[].tagName' 2>/dev/null | grep '^dev-' || true); do
+            if [ "$tag" != "${{ env.TAG }}" ]; then
+              gh release delete "$tag" --yes --cleanup-tag || true
+            fi
+          done
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/*
+          tag_name: ${{ env.TAG }}
+          name: goducky ${{ env.VERSION }}
+          files: dist/*
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ env.PRERELEASE }}
+          fail_on_unmatched_files: true
 
       - name: Upload checksums as artifact
         uses: actions/upload-artifact@v4
