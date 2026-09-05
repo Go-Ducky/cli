@@ -15,6 +15,7 @@ import (
 	"github.com/Go-Ducky/cli/internal/config"
 	"github.com/Go-Ducky/cli/internal/provider"
 	"github.com/Go-Ducky/cli/internal/session"
+	"github.com/Go-Ducky/cli/internal/setup"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"
@@ -217,6 +218,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m.copyToClipCmd()
+		case "ctrl+b":
+			return m.copyAllCmd()
 		case "ctrl+x", "ctrl+d":
 			return m, tea.Quit
 		case "pgup":
@@ -638,7 +641,21 @@ func fetchModelsFor(prov string, cfg *config.Config, auth *config.Auth) ([]strin
 	defer cancel()
 	switch prov {
 	case "ollama":
-		return provider.NewOllama(cfg).ListModels(ctx)
+		// Show what's installed (marked) plus the whole recommended shortlist,
+		// so picking is never stuck with just one model.
+		installed, err := provider.NewOllama(cfg).ListModels(ctx)
+		seen := map[string]bool{}
+		out := make([]string, 0, len(installed)+len(setup.RecommendedModelIDs()))
+		for _, m := range installed {
+			seen[m] = true
+			out = append(out, m+"  (pulled)")
+		}
+		for _, m := range setup.RecommendedModelIDs() {
+			if !seen[m] {
+				out = append(out, m)
+			}
+		}
+		return out, err
 	case "openrouter":
 		if free, err := provider.OpenRouterFreeModels(ctx, ""); err == nil && len(free) > 0 {
 			return free, nil
@@ -663,7 +680,7 @@ func fetchModelsFor(prov string, cfg *config.Config, auth *config.Auth) ([]strin
 func curatedModels(prov string) []string {
 	switch prov {
 	case "ollama":
-		return []string{"qwen2.5-coder:7b", "qwen2.5-coder:3b", "llama3.2:3b", "llama3.2:1b"}
+		return setup.RecommendedModelIDs()
 	case "groq":
 		return []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"}
 	case "openai":
@@ -685,7 +702,7 @@ func pickModel(m *model, opt string) tea.Cmd {
 	if opt == "" || strings.HasPrefix(opt, "──") {
 		return nil
 	}
-	model := strings.TrimSpace(opt)
+	model := strings.TrimSuffix(strings.TrimSpace(opt), "  (pulled)")
 	prov := m.agent.ProviderName()
 	m.applyModel(model)
 	if err := m.cfg.Save(); err != nil {
@@ -782,6 +799,24 @@ func (m *model) copyText() string {
 	return strings.TrimSpace(sb.String())
 }
 
+// copyAllText returns the full conversation, prompts and replies, for Ctrl+B.
+func (m *model) copyAllText() string {
+	var sb strings.Builder
+	for _, it := range m.items {
+		if it.meta {
+			continue
+		}
+		label := "assistant"
+		if it.kind == "user" {
+			label = "user"
+		}
+		sb.WriteString(label + ": ")
+		sb.WriteString(it.text)
+		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 // copyToClipCmd is the Ctrl+C handler: it copies the last reply (or the whole
 // transcript) to the clipboard instead of quitting.
 func (m *model) copyToClipCmd() (tea.Model, tea.Cmd) {
@@ -792,6 +827,21 @@ func (m *model) copyToClipCmd() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.status = "Copying…"
+	m.viewport.SetContent(m.renderBody())
+	return m, func() tea.Msg {
+		return copiedMsg{method: copyToClipboard(text)}
+	}
+}
+
+// copyAllCmd is the Ctrl+B handler: it copies the entire conversation.
+func (m *model) copyAllCmd() (tea.Model, tea.Cmd) {
+	text := m.copyAllText()
+	if text == "" {
+		m.status = "Nothing to copy yet."
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
+	}
+	m.status = "Copying whole conversation…"
 	m.viewport.SetContent(m.renderBody())
 	return m, func() tea.Msg {
 		return copiedMsg{method: copyToClipboard(text)}
@@ -1099,6 +1149,9 @@ func (m *model) configCmd(arg string) tea.Cmd {
 		pullCmd = m.ensureOllamaModel(val)
 	case "auto-approve", "autoapprove", "approve":
 		m.agent.SetAutoApprove(m.cfg.Agent.AutoApprove)
+	case "mouse", "ui.mouse":
+		m.addItem("assistant", "Mouse capture is set to "+onOff(m.cfg.UI.Mouse)+" — it takes effect the next time GoDucky starts.")
+		m.viewport.SetContent(m.renderBody())
 	case "host", "ollama.host":
 		if m.agent.ProviderName() == "ollama" {
 			if p, err := provider.New(m.cfg, m.auth); err == nil {
@@ -1140,6 +1193,7 @@ func (m *model) configPicker() {
 			opt("Iterations", strconv.Itoa(m.cfg.Agent.MaxIterations)),
 			opt("Max output", strconv.Itoa(m.cfg.Agent.MaxOutputChars)),
 			opt("Excluded dirs", excludes),
+			opt("Mouse wheel", onOff(m.cfg.UI.Mouse)),
 			"── Cancel ──",
 		},
 		onPick: func(m *model, opt string) tea.Cmd {
@@ -1171,6 +1225,21 @@ func (m *model) configPicker() {
 				return m.configValuePrompt("output", "max characters per tool result (positive integer)")
 			case strings.HasPrefix(opt, "Excluded dirs"):
 				return m.configValuePrompt("exclude", "comma-separated directories to skip (e.g. .git,dist)")
+			case strings.HasPrefix(opt, "Mouse wheel"):
+				next := !m.cfg.UI.Mouse
+				m.cfg.UI.Mouse = next
+				if err := m.cfg.Save(); err != nil {
+					m.addItem("assistant", "Error saving config: "+err.Error())
+					return nil
+				}
+				note := "Mouse wheel scrolling is now " + onOff(next) + " (takes effect next launch). While it's on, native text selection is taken over by GoDucky, so hold Ctrl or Shift while dragging to select."
+				if !next {
+					note = "Mouse wheel scrolling is now off (takes effect next launch) — native drag-and-select works again, and the wheel scrolls the chat with PageUp/PageDown."
+				}
+				m.addItem("assistant", note)
+				m.viewport.SetContent(m.renderBody())
+				m.viewport.GotoBottom()
+				return nil
 			}
 			return nil
 		},
@@ -1199,6 +1268,7 @@ func configHelp(m *model) string {
 	fmt.Fprintf(sb, "  /config iterations <n>        max tool steps per reply\n")
 	fmt.Fprintf(sb, "  /config output <n>            max chars per tool result\n")
 	fmt.Fprintf(sb, "  /config exclude .git,dist     directories to skip\n")
+	fmt.Fprintf(sb, "  /config mouse on|off          wheel scrolls chat (on) vs native select (off)\n")
 	sb.WriteString("\nCurrent values:\n")
 	fmt.Fprintf(sb, "  provider        : %s\n", prov)
 	fmt.Fprintf(sb, "  model           : %s\n", model)
@@ -1209,6 +1279,7 @@ func configHelp(m *model) string {
 	fmt.Fprintf(sb, "  iterations      : %d\n", m.cfg.Agent.MaxIterations)
 	fmt.Fprintf(sb, "  max output      : %d\n", m.cfg.Agent.MaxOutputChars)
 	fmt.Fprintf(sb, "  excluded dirs   : %s\n", strings.Join(m.cfg.Agent.ExcludeDirs, ", "))
+	fmt.Fprintf(sb, "  mouse wheel     : %s (scrolling, takes over native selection)\n", onOff(m.cfg.UI.Mouse))
 	return sb.String()
 }
 
@@ -1239,12 +1310,14 @@ func helpText() string {
 Controls:
   Enter            Send / run command
   Arrow up/down    Recall previous prompts (like a terminal history)
-  Mouse wheel      Scroll the chat   ·   PageUp/PageDown  Scroll faster
+  PageUp/PageDown  Scroll the chat   ·   Home/End  Jump to top/bottom
   Ctrl+C           Copy the last reply to the clipboard
+  Ctrl+B           Copy the whole conversation to the clipboard
   Ctrl+X           Quit
   Paste with Ctrl+V or right-click
-  To select any text with the mouse, hold Ctrl (or Shift on some terminals)
-  while dragging, then copy with the terminal's own Ctrl+C / right-click.
+  Mouse: drag to select any text (works because the wheel doesn't grab the
+  mouse). Copy with the terminal's Ctrl+C or right-click. To get wheel
+  scrolling instead, run: /config mouse on
 
 Chats are auto-saved when you quit. Resume with goducky resume <number-or-name>
 and rename with goducky rename <number-or-name> <new-name>.

@@ -43,6 +43,15 @@ var RecommendedModels = []ModelGroup{
 	},
 }
 
+// RecommendedModelIDs flattens the recommended shortlist into plain model ids.
+func RecommendedModelIDs() []string {
+	var out []string
+	for _, g := range RecommendedModels {
+		out = append(out, g.Models...)
+	}
+	return out
+}
+
 // RecommendedModelOptions flattens the groups into picker labels like
 // "Qwen · qwen2.5-coder:7b", followed by "Skip, go straight to chat" and
 // "Quit (exit)".

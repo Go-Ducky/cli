@@ -23,6 +23,7 @@ type Config struct {
 	Anthropic  AnthropicConfig `json:"anthropic"`
 	Gemini     GeminiConfig    `json:"gemini"`
 	Agent      AgentConfig     `json:"agent"`
+	UI         UIConfig        `json:"ui"`
 }
 
 // OllamaConfig configures the local Ollama runtime.
@@ -68,6 +69,11 @@ type AgentConfig struct {
 	ExcludeDirs    []string `json:"exclude_dirs"`
 }
 
+// UIConfig controls terminal behavior.
+type UIConfig struct {
+	Mouse bool `json:"mouse"` // capture the mouse so the wheel scrolls the chat (this disables native text selection)
+}
+
 const (
 	configFileName = "config.json"
 	authFileName   = "auth.json"
@@ -109,6 +115,9 @@ func Default() *Config {
 			MaxOutputChars: 12000,
 			AutoApprove:    false,
 			ExcludeDirs:    []string{".git", "node_modules", "vendor", "dist", "build"},
+		},
+		UI: UIConfig{
+			Mouse: false, // off by default so native mouse text selection keeps working
 		},
 	}
 }
@@ -269,6 +278,12 @@ func (c *Config) Set(key, value string) error {
 			}
 		}
 		c.Agent.ExcludeDirs = dirs
+	case "ui.mouse", "mouse":
+		b, err := parseBool(value)
+		if err != nil {
+			return fmt.Errorf("mouse expects on/off, got %q", value)
+		}
+		c.UI.Mouse = b
 	default:
 		return fmt.Errorf("unknown config key %q (try /config to list keys)", key)
 	}
