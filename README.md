@@ -2,8 +2,8 @@
 
 A terminal-based AI coding agent written in Go. It reads, writes, and edits files, runs
 shell commands, and searches your codebase. It works with local models via Ollama or any
-of the common cloud providers (OpenAI, Anthropic, Gemini, Groq, plus anything that speaks
-the OpenAI-compatible API).
+of the common cloud providers (OpenAI, Anthropic, Gemini and Groq) plus anything that speaks
+the OpenAI-compatible API.
 
 One static binary. Runs on Windows, macOS, and Linux.
 
@@ -31,7 +31,7 @@ powershell -ExecutionPolicy Bypass -File "$env:TEMP\goducky-install.ps1"
 ```
 
 If Windows warns when you first run it, right-click `goducky.exe` in Explorer and
-choose *Properties → Unblock*.
+choose _Properties → Unblock_.
 
 ### macOS
 
@@ -134,8 +134,7 @@ goducky --provider openai_compatible \
 
 ## Configuration
 
-Settings live in `~/.config/goducky/config.json` (macOS:
-`~/Library/Application Support/goducky/config.json`). Example:
+Settings live in `~/.config/goducky/config.json` or `~/Library/Application Support/goducky/config.json` on macOS. Example:
 
 ```json
 {
@@ -143,9 +142,20 @@ Settings live in `~/.config/goducky/config.json` (macOS:
   "model": "qwen2.5-coder:7b",
   "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:7b" },
   "groq": { "model": "llama-3.3-70b-versatile" },
-  "openrouter": { "base_url": "https://openrouter.ai/api/v1", "model": "qwen/qwen3-coder:free", "env_key": "OPENROUTER_API_KEY" },
-  "openai": { "base_url": "https://api.openai.com/v1", "model": "gpt-4o", "env_key": "OPENAI_API_KEY" },
-  "anthropic": { "model": "claude-3-5-sonnet-latest", "env_key": "ANTHROPIC_API_KEY" },
+  "openrouter": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "model": "qwen/qwen3-coder:free",
+    "env_key": "OPENROUTER_API_KEY"
+  },
+  "openai": {
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o",
+    "env_key": "OPENAI_API_KEY"
+  },
+  "anthropic": {
+    "model": "claude-3-5-sonnet-latest",
+    "env_key": "ANTHROPIC_API_KEY"
+  },
   "gemini": { "model": "gemini-1.5-pro", "env_key": "GEMINI_API_KEY" },
   "agent": { "auto_approve": false }
 }
