@@ -195,13 +195,9 @@ func run() error {
 func startTUI(a *agent.Agent, cfg *config.Config, auth *config.Auth, workDir, modelName, resumeName string, history []provider.Message) error {
 	m := tui.New(a, workDir, providerLabel(cfg.Provider), modelName, cfg, auth)
 	m.SetHistory(resumeName, history)
-	opts := []tea.ProgramOption{tea.WithAltScreen()}
-	if cfg.UI.Mouse {
-		// Mouse capture makes the wheel scroll the chat but takes over native
-		// text selection — leave it off unless the user opts in (/config mouse).
-		opts = append(opts, tea.WithMouseCellMotion())
-	}
-	prog := tea.NewProgram(m, opts...)
+	// Mouse capture is always on: the wheel scrolls the chat AND dragging
+	// selects text, which is copied automatically on release.
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.SetProgram(prog)
 	if _, err := prog.Run(); err != nil {
 		return err

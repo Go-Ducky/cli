@@ -206,16 +206,10 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 The top line shows which folder and chat you're in. Arrow up/down recalls
 previous prompts, like a terminal history. Menus (`/config`, `/models`,
 `/provider`) are navigated with arrow keys or WASD: Enter picks, Esc cancels.
-Scrolling uses `PageUp`/`PageDown`/`Home`/`End`, and because GoDucky does not
-grab the mouse you can always drag to select text and copy it with your
-terminal's own `Ctrl+C` or right-click. `Ctrl+C` in GoDucky copies the last
-reply to the clipboard, `Ctrl+B` copies the whole conversation, `Ctrl+X` quits.
-Paste with `Ctrl+V` or right-click.
-
-Prefer wheel scrolling? Type `/config mouse on` in the chat (or pick "Mouse
-wheel" in the `/config` menu) and restart GoDucky — note the wheel then
-replaces native selection for that session, so hold `Ctrl` or `Shift` while
-dragging to select.
+The mouse wheel scrolls the chat, and dragging with the left mouse button
+selects text that is copied to your clipboard as soon as you let go — no
+keyboard needed. `Ctrl+C` copies the last reply, `Ctrl+B` copies the whole
+conversation, `Ctrl+X` quits. Paste with `Ctrl+V` or right-click.
 
 `/config` opens an interactive settings menu — pick an option (provider, model,
 auto-approve, Ollama host, iterations, output, excluded dirs) and change it

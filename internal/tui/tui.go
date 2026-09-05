@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Go-Ducky/cli/internal/agent"
 	"github.com/Go-Ducky/cli/internal/config"
@@ -102,6 +103,17 @@ type model struct {
 	sessionName     string // set when the chat was resumed or /save was used
 	history         []string
 	histCursor      int
+
+	selecting  bool             // a left-drag is in progress
+	selStart   *selPos          // anchor (doc row, cell), nil when not selecting
+	selEnd     *selPos          // current drag endpoint
+	plainLines []string         // plain-text body lines, parallel to viewport lines
+}
+
+// selPos is a position in the chat body: content row + cell column.
+type selPos struct {
+	row int
+	col int
 }
 
 var (
@@ -112,6 +124,7 @@ var (
 	statusStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 	highlightStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
 	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	selStyle       = lipgloss.NewStyle().Background(lipgloss.Color("237")).Foreground(lipgloss.Color("231"))
 )
 
 // New creates the TUI model.
@@ -253,6 +266,28 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if m.viewport.Height > 0 {
+			// Left-drag selects (or starts a new selection), wheel scrolls.
+			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
+				if row, col, ok := m.mouseToDoc(msg); ok {
+					m.selecting = true
+					p := selPos{row: row, col: col}
+					m.selStart, m.selEnd = &p, &p
+				} else {
+					m.selecting = false
+					m.selStart, m.selEnd = nil, nil
+				}
+				return m, nil
+			}
+			if m.selecting && msg.Action == tea.MouseActionMotion {
+				if row, col, ok := m.mouseToDoc(msg); ok {
+					m.selEnd = &selPos{row: row, col: col}
+					return m, nil
+				}
+			}
+			if m.selecting && msg.Action == tea.MouseActionRelease {
+				m.selecting = false
+				return m.copySelectionCmd()
+			}
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			if cmd != nil {
@@ -492,6 +527,10 @@ func (m *model) renderBody() string {
 	if w < 20 {
 		w = 80
 	}
+	m.plainLines = m.plainBodyLines(w)
+	if m.selStart != nil && m.selEnd != nil {
+		return m.highlightedBody()
+	}
 	var sb strings.Builder
 	for _, it := range m.items {
 		switch it.kind {
@@ -524,6 +563,168 @@ func (m *model) renderBody() string {
 		sb.WriteString(dimStyle.Render("↑/↓ or W/S to move · Enter to pick · Esc to cancel"))
 	}
 	return sb.String()
+}
+
+// plainBodyLines builds the same lines as renderBody but without styling, one
+// entry per viewport line. It is used both to highlight and to extract the
+// selected text, so it must wrap exactly like renderBody does.
+func (m *model) plainBodyLines(w int) []string {
+	var lines []string
+	add := func(s string) {
+		for _, ln := range strings.Split(s, "\n") {
+			lines = append(lines, ln)
+		}
+	}
+	for _, it := range m.items {
+		switch it.kind {
+		case "user":
+			add("\nYou:\n" + wrapText(it.text, w) + "\n")
+		case "assistant":
+			if it.text != "" {
+				if it.meta {
+					add("\n" + wrapText(it.text, w) + "\n")
+				} else {
+					add("\n" + m.assistantName() + ":\n" + wrapText(it.text, w) + "\n")
+				}
+			}
+		case "tool":
+			add("\n" + wrapText(it.text, w) + "\n")
+		}
+	}
+	if m.current != "" {
+		add("\n" + m.assistantName() + ":\n" + wrapText(m.current, w))
+	}
+	if m.picker != nil {
+		add("\n\n" + wrapText(m.picker.title, w))
+		for i, opt := range m.picker.options {
+			if i == m.picker.selected {
+				add("\n❯ " + opt)
+			} else {
+				add("\n  " + opt)
+			}
+		}
+	}
+	return lines
+}
+
+// highlightedBody renders the plain body with the current selection painted,
+// matching the terminal's own look: a highlighted block from the anchor cell to
+// the endpoint cell.
+func (m *model) highlightedBody() string {
+	a, b := m.normSel()
+	if b.row >= len(m.plainLines) {
+		b.row = len(m.plainLines) - 1
+	}
+	if b.row < 0 {
+		return m.bodyPlain()
+	}
+	var sb strings.Builder
+	for i, line := range m.plainLines {
+		if i < a.row || i > b.row {
+			sb.WriteString(line)
+			sb.WriteString("\n")
+			continue
+		}
+		switch {
+		case a.row == b.row:
+			if a.col > b.col {
+				a, b = b, a
+			}
+			sb.WriteString(selSlice(line, a.col, b.col, selStyle))
+		case i == a.row:
+			sb.WriteString(selSlice(line, a.col, displayWidth(line), selStyle))
+		case i == b.row:
+			sb.WriteString(selSlice(line, 0, b.col, selStyle))
+		default:
+			sb.WriteString(selStyle.Render(line))
+		}
+		sb.WriteString("\n")
+	}
+	s := sb.String()
+	return strings.TrimSuffix(s, "\n")
+}
+
+// normSel returns the selection endpoints ordered from top-left to bottom-right.
+func (m *model) normSel() (selPos, selPos) {
+	a := selPos{}
+	b := selPos{}
+	if m.selStart != nil {
+		a, b = *m.selStart, *m.selEnd
+		if a.row > b.row || (a.row == b.row && a.col > b.col) {
+			a, b = b, a
+		}
+	}
+	if a.row < 0 {
+		a.row = 0
+	}
+	if a.col < 0 {
+		a.col = 0
+	}
+	if b.col < 0 {
+		b.col = 0
+	}
+	return a, b
+}
+
+// bodyPlain returns the unhighlighted plain body (used when there is no valid
+// selection to paint).
+func (m *model) bodyPlain() string {
+	return strings.Join(m.plainLines, "\n")
+}
+
+// selSlice renders a substring of a plain line (covering display cells from..to)
+// with the selection style, leaving the rest unstyled.
+func selSlice(line string, from, to int, st lipgloss.Style) string {
+	w := displayWidth(line)
+	if from < 0 {
+		from = 0
+	}
+	if to > w {
+		to = w
+	}
+	if from > w {
+		from = w
+	}
+	if from >= to {
+		return line
+	}
+	pre := subCells(line, 0, from)
+	sel := subCells(line, from, to)
+	post := subCells(line, to, w)
+	return pre + st.Render(sel) + post
+}
+
+// displayWidth returns the terminal display width of s.
+func displayWidth(s string) int { return runewidth.StringWidth(s) }
+
+// subCells returns the substring of s covering display cells [from, to).
+func subCells(s string, from, to int) string {
+	if from >= to {
+		return ""
+	}
+	var w int
+	start := -1
+	end := -1
+	for i := 0; i < len(s); {
+		r, sz := utf8.DecodeRuneInString(s[i:])
+		cellBefore, cellAfter := w, w+runewidth.RuneWidth(r)
+		if start < 0 && cellAfter > from {
+			start = i
+		}
+		if end < 0 && cellBefore >= to {
+			end = i
+			break
+		}
+		w = cellAfter
+		i += sz
+	}
+	if start < 0 {
+		return ""
+	}
+	if end < 0 {
+		end = len(s)
+	}
+	return s[start:end]
 }
 
 // wrapText wraps plain text to width cells using terminal display width, so it
@@ -848,6 +1049,78 @@ func (m *model) copyAllCmd() (tea.Model, tea.Cmd) {
 	}
 }
 
+// mouseToDoc maps a mouse event to a body position (content row + cell column),
+// accounting for the one-line header above the viewport.
+func (m *model) mouseToDoc(msg tea.MouseMsg) (row, col int, ok bool) {
+	header := 0
+	if m.width > 0 {
+		header = 1
+	}
+	localY := msg.Y - header
+	if localY < 0 || localY >= m.viewport.Height {
+		return 0, 0, false
+	}
+	row = m.viewport.YOffset + localY
+	if row < 0 {
+		row = 0
+	}
+	if maxRow := len(m.plainLines) - 1; row > maxRow {
+		row = maxRow
+	}
+	if row < 0 {
+		return 0, 0, false
+	}
+	if msg.X < 0 {
+		msg.X = 0
+	}
+	return row, msg.X, true
+}
+
+// copySelectionCmd copies the mouse-selected text on release.
+func (m *model) copySelectionCmd() (tea.Model, tea.Cmd) {
+	text := m.selectedText()
+	m.selStart, m.selEnd = nil, nil
+	m.viewport.SetContent(m.renderBody())
+	if text == "" {
+		m.status = "Nothing selected — drag over text to copy it."
+		return m, nil
+	}
+	m.status = "Copied selected text."
+	return m, func() tea.Msg {
+		return copiedMsg{method: copyToClipboard(text)}
+	}
+}
+
+// selectedText returns the text covered by the current selection, using the
+// plain body lines that mirror the rendered output.
+func (m *model) selectedText() string {
+	if m.selStart == nil || m.selEnd == nil {
+		return ""
+	}
+	a, b := m.normSel()
+	if a.row < 0 || a.row >= len(m.plainLines) || b.row < 0 || b.row >= len(m.plainLines) {
+		return ""
+	}
+	var sb strings.Builder
+	for i := a.row; i <= b.row; i++ {
+		line := m.plainLines[i]
+		if i > a.row {
+			sb.WriteString("\n")
+		}
+		switch {
+		case i == a.row && i == b.row:
+			sb.WriteString(subCells(line, a.col, b.col))
+		case i == a.row:
+			sb.WriteString(subCells(line, a.col, displayWidth(line)))
+		case i == b.row:
+			sb.WriteString(subCells(line, 0, b.col))
+		default:
+			sb.WriteString(line)
+		}
+	}
+	return sb.String()
+}
+
 // copyToClipboard copies text using a native helper when available, otherwise
 // the OSC 52 terminal clipboard (works in Windows Terminal, iTerm2, kitty…).
 func copyToClipboard(text string) string {
@@ -1149,9 +1422,6 @@ func (m *model) configCmd(arg string) tea.Cmd {
 		pullCmd = m.ensureOllamaModel(val)
 	case "auto-approve", "autoapprove", "approve":
 		m.agent.SetAutoApprove(m.cfg.Agent.AutoApprove)
-	case "mouse", "ui.mouse":
-		m.addItem("assistant", "Mouse capture is set to "+onOff(m.cfg.UI.Mouse)+" — it takes effect the next time GoDucky starts.")
-		m.viewport.SetContent(m.renderBody())
 	case "host", "ollama.host":
 		if m.agent.ProviderName() == "ollama" {
 			if p, err := provider.New(m.cfg, m.auth); err == nil {
@@ -1193,7 +1463,6 @@ func (m *model) configPicker() {
 			opt("Iterations", strconv.Itoa(m.cfg.Agent.MaxIterations)),
 			opt("Max output", strconv.Itoa(m.cfg.Agent.MaxOutputChars)),
 			opt("Excluded dirs", excludes),
-			opt("Mouse wheel", onOff(m.cfg.UI.Mouse)),
 			"── Cancel ──",
 		},
 		onPick: func(m *model, opt string) tea.Cmd {
@@ -1225,21 +1494,6 @@ func (m *model) configPicker() {
 				return m.configValuePrompt("output", "max characters per tool result (positive integer)")
 			case strings.HasPrefix(opt, "Excluded dirs"):
 				return m.configValuePrompt("exclude", "comma-separated directories to skip (e.g. .git,dist)")
-			case strings.HasPrefix(opt, "Mouse wheel"):
-				next := !m.cfg.UI.Mouse
-				m.cfg.UI.Mouse = next
-				if err := m.cfg.Save(); err != nil {
-					m.addItem("assistant", "Error saving config: "+err.Error())
-					return nil
-				}
-				note := "Mouse wheel scrolling is now " + onOff(next) + " (takes effect next launch). While it's on, native text selection is taken over by GoDucky, so hold Ctrl or Shift while dragging to select."
-				if !next {
-					note = "Mouse wheel scrolling is now off (takes effect next launch) — native drag-and-select works again, and the wheel scrolls the chat with PageUp/PageDown."
-				}
-				m.addItem("assistant", note)
-				m.viewport.SetContent(m.renderBody())
-				m.viewport.GotoBottom()
-				return nil
 			}
 			return nil
 		},
@@ -1268,7 +1522,6 @@ func configHelp(m *model) string {
 	fmt.Fprintf(sb, "  /config iterations <n>        max tool steps per reply\n")
 	fmt.Fprintf(sb, "  /config output <n>            max chars per tool result\n")
 	fmt.Fprintf(sb, "  /config exclude .git,dist     directories to skip\n")
-	fmt.Fprintf(sb, "  /config mouse on|off          wheel scrolls chat (on) vs native select (off)\n")
 	sb.WriteString("\nCurrent values:\n")
 	fmt.Fprintf(sb, "  provider        : %s\n", prov)
 	fmt.Fprintf(sb, "  model           : %s\n", model)
@@ -1279,7 +1532,6 @@ func configHelp(m *model) string {
 	fmt.Fprintf(sb, "  iterations      : %d\n", m.cfg.Agent.MaxIterations)
 	fmt.Fprintf(sb, "  max output      : %d\n", m.cfg.Agent.MaxOutputChars)
 	fmt.Fprintf(sb, "  excluded dirs   : %s\n", strings.Join(m.cfg.Agent.ExcludeDirs, ", "))
-	fmt.Fprintf(sb, "  mouse wheel     : %s (scrolling, takes over native selection)\n", onOff(m.cfg.UI.Mouse))
 	return sb.String()
 }
 
@@ -1311,13 +1563,12 @@ Controls:
   Enter            Send / run command
   Arrow up/down    Recall previous prompts (like a terminal history)
   PageUp/PageDown  Scroll the chat   ·   Home/End  Jump to top/bottom
+  Mouse            Wheel scrolls the chat; drag selects text and it is copied
+                   to your clipboard automatically when you let go
   Ctrl+C           Copy the last reply to the clipboard
   Ctrl+B           Copy the whole conversation to the clipboard
   Ctrl+X           Quit
   Paste with Ctrl+V or right-click
-  Mouse: drag to select any text (works because the wheel doesn't grab the
-  mouse). Copy with the terminal's Ctrl+C or right-click. To get wheel
-  scrolling instead, run: /config mouse on
 
 Chats are auto-saved when you quit. Resume with goducky resume <number-or-name>
 and rename with goducky rename <number-or-name> <new-name>.

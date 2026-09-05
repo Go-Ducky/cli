@@ -42,3 +42,47 @@ func TestWrapRunesCJK(t *testing.T) {
 		t.Fatalf("runes were altered: %q != %q", joined, text)
 	}
 }
+
+func TestSubCells(t *testing.T) {
+	cases := []struct {
+		line string
+		from int
+		to   int
+		want string
+	}{
+{"hello world", 0, 5, "hello"},
+		{"hello world", 6, 11, "world"},
+		{"hello world", 3, 8, "lo wo"},
+		{"héllo", 1, 4, "éll"},
+		{"日本語", 0, 6, "日本語"},
+		{"日本語", 0, 2, "日"},
+		{"日本語", 2, 4, "本"},
+		{"日本語", 4, 6, "語"},
+		{"hello", 0, 99, "hello"},
+		{"hello", 5, 8, ""},
+		{"", 0, 3, ""},
+	}
+	for _, c := range cases {
+		if got := subCells(c.line, c.from, c.to); got != c.want {
+			t.Errorf("subCells(%q,%d,%d) = %q, want %q", c.line, c.from, c.to, got, c.want)
+		}
+	}
+}
+
+func TestSelectedTextOrderReverse(t *testing.T) {
+	m := &model{
+		plainLines: []string{"first line", "second line", "third"},
+	}
+	// Drag from bottom to top: endpoint above anchor.
+	b := selPos{row: 0, col: 6}
+	e := selPos{row: 2, col: 5}
+	m.selStart, m.selEnd = &e, &b
+	if got, want := m.selectedText(), "line\nsecond line\nthird"; got != want {
+		t.Fatalf("selectedText = %q, want %q", got, want)
+	}
+	// Single row selection.
+	m.selStart, m.selEnd = &selPos{row: 1, col: 2}, &selPos{row: 1, col: 11}
+	if got, want := m.selectedText(), "cond line"; got != want {
+		t.Fatalf("selectedText single = %q, want %q", got, want)
+	}
+}
