@@ -156,10 +156,12 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 
 ```
 /help           Show help
-/models         Pick a model for the current provider (live list for Ollama / Groq / OpenRouter)
-/config         View or edit configuration
+/models         Pick a model for the current provider (free list for OpenRouter)
+/config         Show your configuration (provider + model), then /config <key> <value> to edit it
 /provider       Choose a provider interactively (or: /provider <name>)
-/model <name>   Set the model for the current provider
+/model <name>   Set the model for the current provider (auto-pulls it for local Ollama)
+/pull <name>    Pull a model through Ollama (e.g. /pull qwen2.5-coder:7b)
+/rm <name>      Remove a local Ollama model
 /save <name>    Save this chat so you can resume it later
 /rename <name>  Rename the current chat
 /sessions       List saved chats (resume with goducky resume <n>)
@@ -168,16 +170,44 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 /exit           Quit
 ```
 
-Menus (like `/models`, `/provider`) are navigated with **arrow keys or WASD**:
-Enter picks, Esc cancels. `Ctrl+C` or `Ctrl+X` quits. Mouse wheel scrolls the
-transcript.
+The top line shows which folder and chat you're in. Arrow up/down recalls
+previous prompts, like a terminal history. Menus (`/models`, `/provider`) are
+navigated with arrow keys or WASD: Enter picks, Esc cancels. `Ctrl+C` or
+`Ctrl+X` quits. PageUp/PageDown scroll, and because GoDucky doesn't grab the
+mouse you can select text with the mouse to copy and paste with `Ctrl+V` /
+`Shift+Insert` normally.
 
-You can also edit config from inside the TUI without touching the file:
-`/config` shows the current values, and `/config <key> <value>` saves a change.
-Keys are the dotted JSON paths (`provider`, `ollama.host`, `openrouter.model`,
-`agent.auto_approve`), with friendly aliases for the common ones:
-`host`, `auto-approve` (on/off), `iterations`, `output`, `exclude`. Provider and
-model changes apply immediately; everything else is picked up on the next run.
+`/config` shows just what matters — your active provider and model — plus the
+easy edit commands. Changing the model under local Ollama checks the name
+against the Ollama library and pulls it automatically if you don't have it
+yet. Keys are the dotted JSON paths (`provider`, `ollama.host`,
+`agent.auto_approve`) with friendly aliases: `host`, `auto-approve` (on/off),
+`iterations`, `output`, `exclude`. Provider and model changes apply
+immediately.
+
+### MCP server
+
+GoDucky can act as an MCP (Model Context Protocol) server over stdio, exposing
+its file/edit/bash/search tools to clients like Claude Desktop or AI IDEs.
+Point it at any directory you want it to work in:
+
+```
+goducky mcp                                      # server for the current directory
+goducky mcp --dir /path/to/project               # or a specific directory
+```
+
+Add it to Claude Desktop (`claude_desktop_config.json`) with:
+
+```json
+{
+  "mcpServers": {
+    "goducky": { "command": "goducky", "args": ["mcp", "--dir", "/path/to/project"] }
+  }
+}
+```
+
+The server auto-approves tool calls (the client shows them) and only writes to
+stderr, so the stdio protocol channel stays clean.
 
 ### Chat sessions
 
@@ -225,6 +255,7 @@ goducky
   -version           Print version and exit
   completion <shell> Print a tab-completion script (bash, zsh, fish, powershell)
   update [tag]       Self-update to the latest release (or a specific tag)
+  mcp [--dir <path>] Run an MCP stdio server (tools in the given directory)
   sessions           List saved chats
   resume <n-or-name> Resume a saved chat
   rename <n-or-name> <new-name>  Rename a saved chat

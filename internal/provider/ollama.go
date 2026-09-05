@@ -341,6 +341,85 @@ func (o *Ollama) ListModels(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
+// HasModel reports whether a model (or one of its :tag variants) is local.
+func (o *Ollama) HasModel(ctx context.Context, name string) bool {
+	models, err := o.ListModels(ctx)
+	if err != nil {
+		return false
+	}
+	for _, m := range models {
+		if m == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Pull downloads a model from the Ollama registry. It fails with a clear
+// error if the model doesn't exist upstream, which acts as our existence check.
+func (o *Ollama) Pull(ctx context.Context, name string) error {
+	payload, err := json.Marshal(map[string]any{"name": name, "stream": true})
+	if err != nil {
+		return err
+	}
+	url := strings.TrimRight(o.host, "/") + "/api/pull"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("ollama pull: could not reach %s: %w", o.host, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("ollama pull %s failed (%d): %s", name, resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		var chunk struct {
+			Status string `json:"status"`
+			Error  string `json:"error"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &chunk); err != nil {
+			continue
+		}
+		if chunk.Error != "" {
+			return fmt.Errorf("ollama pull %s: %s (check the model name at https://ollama.com/library)", name, chunk.Error)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Remove deletes a model from the local Ollama instance.
+func (o *Ollama) Remove(ctx context.Context, name string) error {
+	payload, err := json.Marshal(map[string]any{"name": name})
+	if err != nil {
+		return err
+	}
+	url := strings.TrimRight(o.host, "/") + "/api/delete"
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("ollama rm: could not reach %s: %w", o.host, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("ollama rm %s failed (%d): %s", name, resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 // Text returns concatenated text content of a message.
 func (m Message) Text() string {
 	var sb strings.Builder

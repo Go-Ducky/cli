@@ -10,7 +10,7 @@ const bashCompletion = `_goducky() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     local flags="--version --models --yes --provider --model --base-url --key --login --dir -p --help"
-    local commands="completion update"
+    local commands="completion update mcp sessions resume rename"
     local providers="ollama groq openai openai_compatible anthropic gemini openrouter"
     if [[ ${COMP_CWORD} -eq 1 && "${cur}" != -* ]]; then
         COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
@@ -31,7 +31,7 @@ complete -F _goducky goducky
 const zshCompletion = `#compdef goducky
 _goducky() {
     _arguments \
-        '1:command:(completion update)' \
+        '1:command:(completion update mcp sessions resume rename)' \
         '(-p --p)'{-p,--p}'[run a one-shot prompt and exit]:prompt: ' \
         '--provider[AI provider]:provider:(ollama groq openai openai_compatible anthropic gemini openrouter)' \
         '--model[model name]:model: ' \
@@ -50,6 +50,10 @@ _goducky "$@"
 const fishCompletion = `complete -c goducky -f
 complete -c goducky -n '__fish_use_subcommand' -a update -d 'self-update to the latest release'
 complete -c goducky -n '__fish_use_subcommand' -a completion -d 'generate a shell completion script'
+complete -c goducky -n '__fish_use_subcommand' -a mcp -d 'run an MCP stdio server for the current directory'
+complete -c goducky -n '__fish_use_subcommand' -a sessions -d 'list saved chats'
+complete -c goducky -n '__fish_use_subcommand' -a resume -d 'resume a saved chat'
+complete -c goducky -n '__fish_use_subcommand' -a rename -d 'rename a saved chat'
 complete -c goducky -l p -r -d 'run a one-shot prompt and exit'
 complete -c goducky -l provider -r -a 'ollama groq openai openai_compatible anthropic gemini openrouter' -d 'AI provider'
 complete -c goducky -l model -r -d 'model name (overrides config)'
@@ -66,7 +70,7 @@ complete -c goducky -l help -d 'show help'
 const powershellCompletion = `Register-ArgumentCompleter -Native -CommandName goducky -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $flags = @('--version', '--models', '--yes', '--provider', '--model', '--base-url', '--key', '--login', '--dir', '-p', '--help')
-    $commands = @('update', 'completion')
+    $commands = @('update', 'completion', 'mcp', 'sessions', 'resume', 'rename')
     $providers = @('ollama', 'groq', 'openai', 'openai_compatible', 'anthropic', 'gemini', 'openrouter')
     $completions = @()
     if ($commandAst.CommandElements.Count -gt 1) {

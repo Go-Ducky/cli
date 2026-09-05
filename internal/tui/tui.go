@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 type streamMsg struct{ text string }
@@ -40,6 +41,13 @@ type modelsMsg struct {
 	provider string
 	models   []string
 	err      error
+}
+
+// ollamaOpMsg reports the result of an async `ollama pull`/`ollama rm`.
+type ollamaOpMsg struct {
+	action string // "pull" | "rm"
+	model  string
+	err    error
 }
 
 // pickerState renders a small inline menu at the bottom of the transcript
@@ -82,6 +90,8 @@ type model struct {
 	pendingMessages []provider.Message
 	picker          *pickerState
 	sessionName     string // set when the chat was resumed or /save was used
+	history         []string
+	histCursor      int
 }
 
 var (
@@ -90,8 +100,6 @@ var (
 	toolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	alertStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
 	statusStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	headerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true).Background(lipgloss.Color("236")).Padding(0, 1)
-	chipStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Background(lipgloss.Color("237")).Padding(0, 1)
 	highlightStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
 	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 )
@@ -148,8 +156,6 @@ func (m *model) Session() *session.Session {
 }
 
 func (m *model) Init() tea.Cmd {
-	m.addMetaItem("assistant", m.assistantName()+" ready. Type a message or /help. Ctrl+C or Ctrl+X to quit.")
-	m.addMetaItem("assistant", fmt.Sprintf("Provider: %s  Model: %s  Dir: %s", m.provider, m.modelName, m.workDir))
 	m.input.Focus()
 	return tea.Batch(tea.EnterAltScreen, textarea.Blink)
 }
@@ -213,6 +219,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "end":
 			m.viewport.GotoBottom()
 			return m, nil
+		case "up", "down":
+			// Arrow up/down recall previous prompts like a shell history.
+			// This requires mouse capture to be off so the terminal's native
+			// select/copy/paste still works; scrolling uses PageUp/PageDown.
+			if !m.running && !m.approvalPending {
+				if msg.String() == "up" {
+					m.recallHistory()
+				} else {
+					m.forwardHistory()
+				}
+				return m, nil
+			}
 		}
 		if m.running {
 			return m, nil
@@ -296,6 +314,26 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetContent(m.renderBody())
 		return m, textarea.Blink
 
+	case ollamaOpMsg:
+		m.status = ""
+		switch msg.action {
+		case "rm":
+			if msg.err != nil {
+				m.addItem("assistant", "❌ Could not remove "+msg.model+": "+msg.err.Error())
+			} else {
+				m.addItem("assistant", "Removed model "+msg.model+".")
+			}
+		default:
+			if msg.err != nil {
+				m.addItem("assistant", "❌ Could not pull "+msg.model+":\n"+msg.err.Error())
+			} else {
+				m.addItem("assistant", "Model "+msg.model+" pulled and ready to use.")
+			}
+		}
+		m.viewport.SetContent(m.renderBody())
+		m.viewport.GotoBottom()
+		return m, nil
+
 	case modelsMsg:
 		fixed := make([]string, 0, len(msg.models)+2)
 		fixed = append(fixed, msg.models...)
@@ -353,6 +391,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "enter" {
 			text := strings.TrimSpace(m.input.Value())
 			if text != "" {
+				m.pushHistory(text)
 				m.input.Reset()
 				cmds = append(cmds, func() tea.Msg { return userMsg{text: text} })
 			}
@@ -372,29 +411,67 @@ func (m *model) addMetaItem(kind, text string) {
 	m.items = append(m.items, transcriptItem{kind: kind, text: text, meta: true})
 }
 
+// pushHistory records a sent prompt and resets the recall cursor to "new input".
+func (m *model) pushHistory(text string) {
+	if len(m.history) > 0 && m.history[len(m.history)-1] == text {
+		m.histCursor = len(m.history)
+		return
+	}
+	m.history = append(m.history, text)
+	m.histCursor = len(m.history)
+}
+
+// recallHistory walks back through sent prompts (arrow up).
+func (m *model) recallHistory() {
+	if len(m.history) == 0 || m.histCursor <= 0 {
+		return
+	}
+	m.histCursor--
+	m.input.SetValue(m.history[m.histCursor])
+	m.input.CursorEnd()
+}
+
+// forwardHistory walks forward again toward a fresh input (arrow down).
+func (m *model) forwardHistory() {
+	if m.histCursor >= len(m.history) {
+		return
+	}
+	m.histCursor++
+	if m.histCursor == len(m.history) {
+		m.input.Reset()
+		return
+	}
+	m.input.SetValue(m.history[m.histCursor])
+	m.input.CursorEnd()
+}
+
 func (m *model) renderBody() string {
+	w := m.width - 2
+	if w < 20 {
+		w = 80
+	}
 	var sb strings.Builder
 	for _, it := range m.items {
 		switch it.kind {
 		case "user":
-			sb.WriteString("\n" + userStyle.Render("You:") + "\n" + it.text + "\n")
+			sb.WriteString("\n" + userStyle.Render("You:") + "\n" + wrapText(it.text, w) + "\n")
 		case "assistant":
 			if it.text != "" {
 				if it.meta {
-					sb.WriteString("\n" + it.text + "\n")
+					sb.WriteString("\n" + wrapText(it.text, w) + "\n")
 				} else {
-					sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + it.text + "\n")
+					sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + wrapText(it.text, w) + "\n")
 				}
 			}
 		case "tool":
-			sb.WriteString("\n" + toolStyle.Render(it.text) + "\n")
+			sb.WriteString("\n" + toolStyle.Render(wrapText(it.text, w)) + "\n")
 		}
 	}
 	if m.current != "" {
-		sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + m.current)
+		sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + wrapText(m.current, w))
 	}
 	if m.picker != nil {
-		sb.WriteString("\n\n" + highlightStyle.Render(m.picker.title) + "\n")
+		sb.WriteString("\n\n" + highlightStyle.Render(wrapText(m.picker.title, w)) + "\n")
 		for i, opt := range m.picker.options {
 			if i == m.picker.selected {
 				sb.WriteString(highlightStyle.Render("❯ "+opt) + "\n")
@@ -405,6 +482,96 @@ func (m *model) renderBody() string {
 		sb.WriteString(dimStyle.Render("↑/↓ or W/S to move · Enter to pick · Esc to cancel"))
 	}
 	return sb.String()
+}
+
+// wrapText wraps plain text to width cells using terminal display width, so it
+// scrolls down instead of overflowing. Word-aware, with a rune-level fallback
+// that keeps Czech, Polish, Spanish, CJK etc. intact.
+func wrapText(s string, width int) string {
+	if width < 8 {
+		width = 8
+	}
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, wrapLine(line, width))
+	}
+	return strings.Join(out, "\n")
+}
+
+func wrapLine(line string, width int) string {
+	if runewidth.StringWidth(line) <= width {
+		return line
+	}
+	words := strings.Fields(line)
+	if len(words) == 0 {
+		return strings.Join(wrapRunes(line, width), "\n")
+	}
+	var out []string
+	var cur strings.Builder
+	curW := 0
+	flush := func() {
+		if curW > 0 {
+			out = append(out, cur.String())
+			cur.Reset()
+			curW = 0
+		}
+	}
+	for _, w := range words {
+		wW := runewidth.StringWidth(w)
+		if wW > width {
+			flush()
+			out = append(out, wrapRunes(w, width)...)
+			continue
+		}
+		if curW == 0 {
+			cur.WriteString(w)
+			curW = wW
+			continue
+		}
+		if curW+1+wW <= width {
+			cur.WriteString(" ")
+			cur.WriteString(w)
+			curW += 1 + wW
+			continue
+		}
+		flush()
+		cur.WriteString(w)
+		curW = wW
+	}
+	flush()
+	if len(out) == 0 {
+		out = append(out, "")
+	}
+	return strings.Join(out, "\n")
+}
+
+// wrapRunes breaks a token into width-sized pieces without splitting a
+// multi-byte character (measured by display width).
+func wrapRunes(s string, width int) []string {
+	var out []string
+	var cur strings.Builder
+	curW := 0
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if rw < 1 {
+			rw = 1
+		}
+		if curW+rw > width {
+			out = append(out, cur.String())
+			cur.Reset()
+			curW = 0
+		}
+		cur.WriteRune(r)
+		curW += rw
+	}
+	if curW > 0 {
+		out = append(out, cur.String())
+	}
+	if len(out) == 0 {
+		out = append(out, "")
+	}
+	return out
 }
 
 func (m *model) assistantName() string {
@@ -487,13 +654,28 @@ func pickModel(m *model, opt string) tea.Cmd {
 	}
 	m.addItem("assistant", "Using model "+model)
 
-	// Offer to pull it if it's a local model we don't have yet.
+	// If it's a local model we don't have yet, pull it automatically.
 	if prov == "ollama" {
-		if local, err := provider.NewOllama(m.cfg).ListModels(m.agentCtx()); err == nil && !containsString(local, model) {
-			m.addItem("assistant", "Model "+model+" isn't pulled yet. Use `ollama pull "+model+"` once.")
-		}
+		return m.ensureOllamaModel(model)
 	}
 	return nil
+}
+
+// ensureOllamaModel pulls a model through the Ollama API when it isn't local
+// yet (and errors clearly if the name doesn't exist in the Ollama library).
+func (m *model) ensureOllamaModel(model string) tea.Cmd {
+	if m.agent.ProviderName() != "ollama" {
+		return nil
+	}
+	o := provider.NewOllama(m.cfg)
+	if o.HasModel(m.agentCtx(), model) {
+		return nil
+	}
+	m.addItem("assistant", "Model "+model+" isn't local — pulling it through Ollama. Grab a coffee, this can take a while.")
+	return func() tea.Msg {
+		err := o.Pull(context.Background(), model)
+		return ollamaOpMsg{action: "pull", model: model, err: err}
+	}
 }
 
 func (m *model) agentCtx() context.Context { return context.Background() }
@@ -530,7 +712,15 @@ func (m *model) View() string {
 
 	header := ""
 	if m.width > 0 {
-		header = headerStyle.Render(" GoDucky ") + " " + chipStyle.Render(m.provider) + " " + chipStyle.Render(m.modelName) + "\n"
+		chat := m.sessionName
+		if chat == "" {
+			chat = "new chat"
+		}
+		line := "📁 " + m.workDir + "   ·   💬 " + chat
+		if runewidth.StringWidth(line) > m.width {
+			line = truncateWidth(line, m.width-1)
+		}
+		header = dimStyle.Render(line) + "\n"
 	}
 	statusLine := ""
 	if m.status != "" {
@@ -613,9 +803,9 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 			m.applyModel(arg)
 			_ = m.cfg.Save()
 			m.addItem("assistant", "Set model to "+arg+" on provider "+m.agent.ProviderName())
-		} else {
-			return m.openModelsPicker()
+			return m.ensureOllamaModel(arg)
 		}
+		return m.openModelsPicker()
 	case "/models":
 		return m.openModelsPicker()
 	case "/providers", "/provider", "/use":
@@ -669,6 +859,32 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 			fmt.Fprintf(&sb, "  %2d. %s (%s / %s)\n", i+1, s.Name, s.Provider, s.Model)
 		}
 		m.addItem("assistant", strings.TrimSuffix(sb.String(), "\n"))
+	case "/pull":
+		if arg == "" {
+			m.addItem("assistant", "Usage: /pull <model>  (e.g. /pull qwen2.5-coder:7b)")
+			return nil
+		}
+		o := provider.NewOllama(m.cfg)
+		if o.HasModel(m.agentCtx(), arg) {
+			m.addItem("assistant", "Model "+arg+" is already pulled locally.")
+			return nil
+		}
+		m.addItem("assistant", "Pulling model "+arg+" from the Ollama library...")
+		return func() tea.Msg {
+			err := o.Pull(context.Background(), arg)
+			return ollamaOpMsg{action: "pull", model: arg, err: err}
+		}
+	case "/rm", "/remove":
+		if arg == "" {
+			m.addItem("assistant", "Usage: /rm <model>  (e.g. /rm qwen2.5-coder:7b)")
+			return nil
+		}
+		o := provider.NewOllama(m.cfg)
+		m.addItem("assistant", "Removing model "+arg+" from your local Ollama...")
+		return func() tea.Msg {
+			err := o.Remove(context.Background(), arg)
+			return ollamaOpMsg{action: "rm", model: arg, err: err}
+		}
 	case "/setup":
 		m.addItem("assistant", "Run `goducky` in a terminal after quitting to re-run setup, or pull a local model with `ollama pull qwen2.5-coder:7b`.")
 	case "/clear":
@@ -729,7 +945,7 @@ func providersHelp(cfg *config.Config) string {
 func (m *model) configCmd(arg string) tea.Cmd {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		m.addItem("assistant", configHelp(m.cfg))
+		m.addItem("assistant", configHelp(m))
 		return nil
 	}
 	key, val, _ := strings.Cut(arg, " ")
@@ -743,18 +959,20 @@ func (m *model) configCmd(arg string) tea.Cmd {
 		case "model":
 			return m.openModelsPicker()
 		}
-		m.addItem("assistant", configHelp(m.cfg))
+		m.addItem("assistant", configHelp(m))
 		return nil
 	}
 	if err := m.cfg.Set(key, val); err != nil {
 		m.addItem("assistant", "Error: "+err.Error())
 		return nil
 	}
+	var pullCmd tea.Cmd
 	switch key {
 	case "provider":
 		return m.switchProvider(val)
 	case "model":
 		m.applyModel(val)
+		pullCmd = m.ensureOllamaModel(val)
 	case "host", "ollama.host":
 		if m.agent.ProviderName() == "ollama" {
 			if p, err := provider.New(m.cfg, m.auth); err == nil {
@@ -767,7 +985,7 @@ func (m *model) configCmd(arg string) tea.Cmd {
 		return nil
 	}
 	m.addItem("assistant", "Saved config: "+key+" = "+val)
-	return nil
+	return pullCmd
 }
 
 // applyModel sets the model everywhere: the active agent and the active
@@ -778,29 +996,27 @@ func (m *model) applyModel(model string) {
 	m.cfg.SetProviderModel(m.agent.ProviderName(), model)
 }
 
-func configHelp(cfg *config.Config) string {
+func configHelp(m *model) string {
+	prov := m.agent.ProviderName()
+	model := m.modelName
 	sb := &strings.Builder{}
-	sb.WriteString("Current settings (saved to config.json):\n")
-	fmt.Fprintf(sb, "  provider            : %s\n", cfg.Provider)
-	fmt.Fprintf(sb, "  model               : %s\n", cfg.Model)
-	fmt.Fprintf(sb, "  local Ollama        : %s (%s)\n", cfg.Ollama.Host, cfg.Ollama.Model)
-	fmt.Fprintf(sb, "  groq                : %s\n", cfg.Groq.Model)
-	fmt.Fprintf(sb, "  openai              : %s (%s)\n", cfg.OpenAI.Model, cfg.OpenAI.BaseURL)
-	fmt.Fprintf(sb, "  openrouter          : %s\n", cfg.OpenRouter.Model)
-	fmt.Fprintf(sb, "  anthropic           : %s\n", cfg.Anthropic.Model)
-	fmt.Fprintf(sb, "  gemini              : %s\n", cfg.Gemini.Model)
-	fmt.Fprintf(sb, "  auto-approve tools  : %s\n", onOff(cfg.Agent.AutoApprove))
-	fmt.Fprintf(sb, "  max iterations      : %d\n", cfg.Agent.MaxIterations)
-	fmt.Fprintf(sb, "  max output chars    : %d\n", cfg.Agent.MaxOutputChars)
-	fmt.Fprintf(sb, "  exclude dirs        : %s\n", strings.Join(cfg.Agent.ExcludeDirs, ", "))
-	sb.WriteString("\nEasy examples:\n")
-	sb.WriteString("  /config model <name>          pick a model (or just /config model)\n")
-	sb.WriteString("  /config provider              choose a provider interactively\n")
-	sb.WriteString("  /config host http://localhost:11434\n")
-	sb.WriteString("  /config auto-approve on       skip permission prompts\n")
-	sb.WriteString("  /config iterations 50\n")
-	sb.WriteString("  /config exclude .git,dist\n")
-	sb.WriteString("  /config openrouter.model <id>  any dotted key works too\n")
+	sb.WriteString("You are on " + prov + " with model " + model + ".\n\n")
+	sb.WriteString("Change things easily (or just type /config <key> <value>):\n")
+	fmt.Fprintf(sb, "  /config provider           pick another provider (ollama, groq, openai, ...)\n")
+	fmt.Fprintf(sb, "  /config model              pick a model with arrows\n")
+	fmt.Fprintf(sb, "  /config model %-22s use a model directly\n", "<name>")
+	fmt.Fprintf(sb, "  /config model %-22s auto-pulls it for local Ollama\n", "<name>")
+	fmt.Fprintf(sb, "  /config host http://localhost:11434   where local Ollama runs\n")
+	fmt.Fprintf(sb, "  /config auto-approve on    skip permission prompts\n")
+	fmt.Fprintf(sb, "  /config iterations 50      how many tool steps max\n")
+	fmt.Fprintf(sb, "  /config exclude .git,dist  directories to skip\n")
+	sb.WriteString("\nCurrent values:\n")
+	fmt.Fprintf(sb, "  provider        : %s\n", prov)
+	fmt.Fprintf(sb, "  model           : %s\n", model)
+	if prov == "ollama" {
+		fmt.Fprintf(sb, "  ollama host     : %s\n", m.cfg.Ollama.Host)
+	}
+	fmt.Fprintf(sb, "  auto-approve    : %s\n", onOff(m.cfg.Agent.AutoApprove))
 	return sb.String()
 }
 
@@ -814,10 +1030,12 @@ func onOff(b bool) string {
 func helpText() string {
 	return `Commands:
   /help            Show this help
-  /models          Pick a model for the current provider
-  /config          View or edit configuration (aliases: host, auto-approve, iterations, output)
-  /model <name>    Set the model for the current provider
+  /models          Pick a model for the current provider (free list for OpenRouter)
+  /config          Show your configuration (provider + model), and /config <key> <value> edits it
+  /model <name>    Set the model (auto-pulls it for local Ollama)
   /provider        Choose a provider interactively (or: /provider <name>)
+  /pull <name>     Pull a model through Ollama (e.g. /pull qwen2.5-coder:7b)
+  /rm <name>       Remove a local Ollama model
   /save <name>     Save this chat so you can resume it later
   /rename <name>   Rename the current chat
   /sessions        List saved chats (resume with goducky resume <n>)
@@ -827,13 +1045,16 @@ func helpText() string {
 
 Controls:
   Enter            Send / run command
+  Arrow up/down    Recall previous prompts (like a terminal history)
   Ctrl+C / Ctrl+X  Quit
   PageUp/PageDown  Scroll
-  Mouse wheel      Scroll
-  Arrow/WASD       Navigate menus (Enter picks, Esc cancels)
+  Select with mouse to copy · Ctrl+V or Shift+Insert to paste
 
 Chats are auto-saved when you quit. Resume with goducky resume <number-or-name>
 and rename with goducky rename <number-or-name> <new-name>.
+
+Changing the model under local Ollama checks the name against the Ollama library
+and pulls it automatically when missing.
 `
 }
 
@@ -871,4 +1092,26 @@ func truncRunes(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "..."
+}
+
+// truncateWidth cuts a string to fit width terminal cells (ANSI-free text),
+// keeping an ellipsis.
+func truncateWidth(s string, width int) string {
+	if runewidth.StringWidth(s) <= width {
+		return s
+	}
+	var sb strings.Builder
+	w := 0
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if rw < 1 {
+			rw = 1
+		}
+		if w+rw > width-1 {
+			break
+		}
+		sb.WriteRune(r)
+		w += rw
+	}
+	return sb.String() + "…"
 }

@@ -33,7 +33,7 @@ func ValidateAPIKey(name, key string) error {
 	case "gemini":
 		err = checkGemini(ctx, key)
 	case "openrouter":
-		err = checkBearer(ctx, "https://openrouter.ai/api/v1/key", key)
+		err = checkBearer(ctx, "https://openrouter.ai/api/v1/auth/key", key)
 	default:
 		return nil // nothing to check for unknown/local providers
 	}

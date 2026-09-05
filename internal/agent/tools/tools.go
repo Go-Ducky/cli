@@ -84,6 +84,9 @@ func (r *Registry) Names() []string {
 	return out
 }
 
+// Size returns the number of registered tools.
+func (r *Registry) Size() int { return len(r.order) }
+
 // All returns all tools in registration order.
 func (r *Registry) All() []Tool {
 	out := make([]Tool, 0, len(r.order))

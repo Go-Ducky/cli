@@ -13,6 +13,7 @@ import (
 	"github.com/Go-Ducky/cli/internal/agent"
 	"github.com/Go-Ducky/cli/internal/agent/tools"
 	"github.com/Go-Ducky/cli/internal/config"
+	"github.com/Go-Ducky/cli/internal/mcp"
 	"github.com/Go-Ducky/cli/internal/provider"
 	"github.com/Go-Ducky/cli/internal/session"
 	"github.com/Go-Ducky/cli/internal/setup"
@@ -53,6 +54,8 @@ func run() error {
 			return completionCmd(flag.Args()[1:])
 		case "update":
 			return updateCmd(flag.Args()[1:])
+		case "mcp":
+			return mcpCmd(flag.Args()[1:])
 		case "sessions":
 			return session.PrintList()
 		case "resume":
@@ -190,15 +193,44 @@ func run() error {
 
 // startTUI launches the interactive chat, auto-saving the transcript when the
 // user quits so it can be resumed later with `goducky resume`.
+//
+// Mouse capture is deliberately NOT enabled: without it the terminal's native
+// select/copy/paste works, which users expect. Scrolling happens with
+// PageUp/PageDown; arrow up/down recall past prompts.
 func startTUI(a *agent.Agent, cfg *config.Config, auth *config.Auth, workDir, modelName, resumeName string, history []provider.Message) error {
 	m := tui.New(a, workDir, providerLabel(cfg.Provider), modelName, cfg, auth)
 	m.SetHistory(resumeName, history)
-	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	prog := tea.NewProgram(m, tea.WithAltScreen())
 	m.SetProgram(prog)
 	if _, err := prog.Run(); err != nil {
 		return err
 	}
 	return autoSaveChat(m)
+}
+
+// mcpCmd starts the MCP stdio server so external tools (Claude Desktop, IDEs)
+// can use goducky's file/bash tools in a working directory you select.
+func mcpCmd(args []string) error {
+	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
+	dir := fs.String("dir", "", "working directory for the tools (default: current directory)")
+	fs.Parse(args)
+
+	workDir := agent.CurrentDir()
+	if *dir != "" {
+		abs, err := filepath.Abs(*dir)
+		if err != nil {
+			return fmt.Errorf("invalid directory: %w", err)
+		}
+		workDir = abs
+	}
+	if info, err := os.Stat(workDir); err != nil || !info.IsDir() {
+		return fmt.Errorf("working directory does not exist: %s", workDir)
+	}
+
+	reg := tools.DefaultRegistry()
+	srv := mcp.New(workDir, reg, version)
+	// stdout carries the MCP protocol; any diagnostics must go to stderr.
+	return srv.Run(context.Background(), os.Stdin, os.Stdout)
 }
 
 func autoSaveChat(m interface{ Session() *session.Session }) error {
