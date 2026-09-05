@@ -100,12 +100,16 @@ cloud API key. Groq is a good free starting point.
 
 ```bash
 goducky                                                  # interactive TUI (default: local Ollama)
-goducky --dir /path/to/project
+goducky --dir /path/to/project                           # work in a specific folder
 goducky -p "explain this repo"                           # one-shot, non-interactive
 goducky --models                                         # list available models
 goducky --provider ollama                                # skip the wizard, use local models
 goducky --provider openrouter                            # cloud models (needs a key)
 ```
+
+Chats work in your **projects folder** by default: `~/Documents/goducky` on
+Windows, macOS, and Linux (created automatically). Pass `--dir` to work anywhere
+else, or `--dir` with `goducky mcp` for the MCP server.
 
 ## Models
 
@@ -185,7 +189,7 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 ```
 /help           Show help
 /models         Pick a model for the current provider (free list for OpenRouter)
-/config         Show your configuration (provider + model), then /config <key> <value> to edit it
+/config         Open a settings menu (or /config <key> <value> to edit directly)
 /provider       Choose a provider interactively (or: /provider <name>)
 /model <name>   Set the model for the current provider (auto-pulls it for local Ollama)
 /pull <name>    Pull a model through Ollama (e.g. /pull qwen2.5-coder:7b)
@@ -200,19 +204,19 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 ```
 
 The top line shows which folder and chat you're in. Arrow up/down recalls
-previous prompts, like a terminal history. Menus (`/models`, `/provider`) are
-navigated with arrow keys or WASD: Enter picks, Esc cancels. `Ctrl+C` or
-`Ctrl+X` quits. PageUp/PageDown scroll, and because GoDucky doesn't grab the
-mouse you can select text with the mouse to copy and paste with `Ctrl+V` /
-`Shift+Insert` normally.
+previous prompts, like a terminal history. Menus (`/config`, `/models`,
+`/provider`) are navigated with arrow keys or WASD: Enter picks, Esc cancels.
+The mouse wheel scrolls the chat; `Ctrl+C` or `Ctrl+X` quits. To select and
+copy text under mouse reporting, hold `Ctrl` (or `Shift` on some terminals)
+while dragging, then paste with `Ctrl+V` or right-click.
 
-`/config` shows just what matters — your active provider and model — plus the
-easy edit commands. Changing the model under local Ollama checks the name
-against the Ollama library and pulls it automatically if you don't have it
-yet. Keys are the dotted JSON paths (`provider`, `ollama.host`,
-`agent.auto_approve`) with friendly aliases: `host`, `auto-approve` (on/off),
-`iterations`, `output`, `exclude`. Provider and model changes apply
-immediately.
+`/config` opens an interactive settings menu — pick an option (provider, model,
+auto-approve, Ollama host, iterations, output, excluded dirs) and change it
+with arrows or a quick prompt. The old direct form still works too: keys are
+the dotted JSON paths (`provider`, `ollama.host`, `agent.auto_approve`) with
+friendly aliases: `host`, `auto-approve` (on/off), `iterations`, `output`,
+`exclude`. Provider and model changes apply immediately, and changing the model
+under local Ollama auto-pulls it if you don't have it yet.
 
 ### MCP server
 

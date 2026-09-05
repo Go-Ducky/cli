@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,6 +95,7 @@ type model struct {
 	approvalPending bool
 	pendingMessages []provider.Message
 	picker          *pickerState
+	configPrompt    string // when set, the next Enter sets this config key
 	sessionName     string // set when the chat was resumed or /save was used
 	history         []string
 	histCursor      int
@@ -393,6 +395,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if !m.running {
+		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "esc" && m.configPrompt != "" {
+			m.configPrompt = ""
+			m.status = ""
+			m.input.SetValue("")
+			m.addItem("assistant", "Cancelled.")
+			m.viewport.SetContent(m.renderBody())
+			m.viewport.GotoBottom()
+			return m, nil
+		}
+
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		if cmd != nil {
@@ -401,9 +413,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "enter" {
 			text := strings.TrimSpace(m.input.Value())
 			if text != "" {
-				m.pushHistory(text)
-				m.input.Reset()
-				cmds = append(cmds, func() tea.Msg { return userMsg{text: text} })
+				if m.configPrompt != "" {
+					key := m.configPrompt
+					m.configPrompt = ""
+					m.status = ""
+					m.input.Reset()
+					cmds = append(cmds, m.configCmd(key+" "+text))
+				} else {
+					m.pushHistory(text)
+					m.input.Reset()
+					cmds = append(cmds, func() tea.Msg { return userMsg{text: text} })
+				}
 			}
 		}
 	}
@@ -975,7 +995,7 @@ func providersHelp(cfg *config.Config) string {
 func (m *model) configCmd(arg string) tea.Cmd {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		m.addItem("assistant", configHelp(m))
+		m.configPicker()
 		return nil
 	}
 	key, val, _ := strings.Cut(arg, " ")
@@ -1003,6 +1023,8 @@ func (m *model) configCmd(arg string) tea.Cmd {
 	case "model":
 		m.applyModel(val)
 		pullCmd = m.ensureOllamaModel(val)
+	case "auto-approve", "autoapprove", "approve":
+		m.agent.SetAutoApprove(m.cfg.Agent.AutoApprove)
 	case "host", "ollama.host":
 		if m.agent.ProviderName() == "ollama" {
 			if p, err := provider.New(m.cfg, m.auth); err == nil {
@@ -1018,6 +1040,70 @@ func (m *model) configCmd(arg string) tea.Cmd {
 	return pullCmd
 }
 
+// configValuePrompt asks the user to type a value for a config key in the input bar.
+func (m *model) configValuePrompt(key, hint string) tea.Cmd {
+	m.configPrompt = key
+	m.addItem("assistant", "⚙ Setting "+key+": "+hint+"\nType the new value and press Enter (Esc to cancel).")
+	m.viewport.SetContent(m.renderBody())
+	m.viewport.GotoBottom()
+	return nil
+}
+
+// configPicker opens the interactive settings menu behind /config.
+func (m *model) configPicker() {
+	opt := func(name, val string) string { return name + "   " + val }
+	excludes := strings.Join(m.cfg.Agent.ExcludeDirs, ", ")
+	if excludes == "" {
+		excludes = "(none)"
+	}
+	m.picker = &pickerState{
+		title: "GoDucky settings — pick one to change (Esc to cancel)",
+		options: []string{
+			opt("Provider", m.agent.ProviderName()),
+			opt("Model", m.modelName),
+			opt("Auto-approve", onOff(m.cfg.Agent.AutoApprove)),
+			opt("Ollama host", m.cfg.Ollama.Host),
+			opt("Iterations", strconv.Itoa(m.cfg.Agent.MaxIterations)),
+			opt("Max output", strconv.Itoa(m.cfg.Agent.MaxOutputChars)),
+			opt("Excluded dirs", excludes),
+			"── Cancel ──",
+		},
+		onPick: func(m *model, opt string) tea.Cmd {
+			switch {
+			case strings.HasPrefix(opt, "──"):
+				return nil
+			case strings.HasPrefix(opt, "Provider"):
+				m.providerPicker()
+				return nil
+			case strings.HasPrefix(opt, "Model"):
+				return m.openModelsPicker()
+			case strings.HasPrefix(opt, "Auto-approve"):
+				next := !m.cfg.Agent.AutoApprove
+				m.cfg.Agent.AutoApprove = next
+				m.agent.SetAutoApprove(next)
+				if err := m.cfg.Save(); err != nil {
+					m.addItem("assistant", "Error saving config: "+err.Error())
+					return nil
+				}
+				m.addItem("assistant", "Auto-approve is now "+onOff(next)+".")
+				m.viewport.SetContent(m.renderBody())
+				m.viewport.GotoBottom()
+				return nil
+			case strings.HasPrefix(opt, "Ollama host"):
+				return m.configValuePrompt("host", "where your local Ollama runs (e.g. http://localhost:11434)")
+			case strings.HasPrefix(opt, "Iterations"):
+				return m.configValuePrompt("iterations", "max tool steps per reply (positive integer)")
+			case strings.HasPrefix(opt, "Max output"):
+				return m.configValuePrompt("output", "max characters per tool result (positive integer)")
+			case strings.HasPrefix(opt, "Excluded dirs"):
+				return m.configValuePrompt("exclude", "comma-separated directories to skip (e.g. .git,dist)")
+			}
+			return nil
+		},
+	}
+	m.viewport.GotoBottom()
+}
+
 // applyModel sets the model everywhere: the active agent and the active
 // provider's config block, so it survives a restart.
 func (m *model) applyModel(model string) {
@@ -1031,15 +1117,14 @@ func configHelp(m *model) string {
 	model := m.modelName
 	sb := &strings.Builder{}
 	sb.WriteString("You are on " + prov + " with model " + model + ".\n\n")
-	sb.WriteString("Change things easily (or just type /config <key> <value>):\n")
-	fmt.Fprintf(sb, "  /config provider           pick another provider (ollama, groq, openai, ...)\n")
-	fmt.Fprintf(sb, "  /config model              pick a model with arrows\n")
-	fmt.Fprintf(sb, "  /config model %-22s use a model directly\n", "<name>")
-	fmt.Fprintf(sb, "  /config model %-22s auto-pulls it for local Ollama\n", "<name>")
-	fmt.Fprintf(sb, "  /config host http://localhost:11434   where local Ollama runs\n")
-	fmt.Fprintf(sb, "  /config auto-approve on    skip permission prompts\n")
-	fmt.Fprintf(sb, "  /config iterations 50      how many tool steps max\n")
-	fmt.Fprintf(sb, "  /config exclude .git,dist  directories to skip\n")
+	sb.WriteString("Type  /config  (no arguments) to open the settings menu, or set keys\ndirectly:\n")
+	fmt.Fprintf(sb, "  /config provider  %-16s pick another provider\n", "<name>")
+	fmt.Fprintf(sb, "  /config model     %-16s set the model (auto-pulls for Ollama)\n", "<name>")
+	fmt.Fprintf(sb, "  /config host      %-16s where local Ollama runs\n", "<url>")
+	fmt.Fprintf(sb, "  /config auto-approve on|off   skip permission prompts\n")
+	fmt.Fprintf(sb, "  /config iterations <n>        max tool steps per reply\n")
+	fmt.Fprintf(sb, "  /config output <n>            max chars per tool result\n")
+	fmt.Fprintf(sb, "  /config exclude .git,dist     directories to skip\n")
 	sb.WriteString("\nCurrent values:\n")
 	fmt.Fprintf(sb, "  provider        : %s\n", prov)
 	fmt.Fprintf(sb, "  model           : %s\n", model)
@@ -1047,6 +1132,9 @@ func configHelp(m *model) string {
 		fmt.Fprintf(sb, "  ollama host     : %s\n", m.cfg.Ollama.Host)
 	}
 	fmt.Fprintf(sb, "  auto-approve    : %s\n", onOff(m.cfg.Agent.AutoApprove))
+	fmt.Fprintf(sb, "  iterations      : %d\n", m.cfg.Agent.MaxIterations)
+	fmt.Fprintf(sb, "  max output      : %d\n", m.cfg.Agent.MaxOutputChars)
+	fmt.Fprintf(sb, "  excluded dirs   : %s\n", strings.Join(m.cfg.Agent.ExcludeDirs, ", "))
 	return sb.String()
 }
 
@@ -1061,7 +1149,7 @@ func helpText() string {
 	return `Commands:
   /help            Show this help
   /models          Pick a model for the current provider (free list for OpenRouter)
-  /config          Show your configuration (provider + model), and /config <key> <value> edits it
+  /config          Open the settings menu (or /config <key> <value> to edit directly)
   /model <name>    Set the model (auto-pulls it for local Ollama)
   /provider        Choose a provider interactively (or: /provider <name>)
   /pull <name>     Pull a model through Ollama (e.g. /pull qwen2.5-coder:7b)
@@ -1077,9 +1165,10 @@ func helpText() string {
 Controls:
   Enter            Send / run command
   Arrow up/down    Recall previous prompts (like a terminal history)
-  Ctrl+C / Ctrl+X  Quit
-  PageUp/PageDown  Scroll
-  Select with mouse to copy · Ctrl+V or Shift+Insert to paste
+  Mouse wheel      Scroll the chat   ·   Ctrl+C / Ctrl+X  Quit
+  PageUp/PageDown  Scroll faster
+  To copy: hold Ctrl (or Shift) while dragging to select, then Ctrl+C
+  Paste with Ctrl+V or right-click
 
 Chats are auto-saved when you quit. Resume with goducky resume <number-or-name>
 and rename with goducky rename <number-or-name> <new-name>.

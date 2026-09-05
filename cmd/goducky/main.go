@@ -39,7 +39,7 @@ func run() error {
 	listModels := flag.Bool("models", false, "list available models and exit")
 	autoApprove := flag.Bool("yes", false, "auto-approve all tool actions")
 	apiKeyCmd := flag.String("login", "", "save an API key for a provider (groq|openai|openai_compatible|anthropic|gemini|openrouter) and exit")
-	dir := flag.String("dir", "", "working directory (default: current)")
+	dir := flag.String("dir", "", "working directory (default: ~/Documents/goducky)")
 	versionFlag := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -84,7 +84,7 @@ func run() error {
 		return saveAPIKey(*apiKeyCmd)
 	}
 
-	workDir := agent.CurrentDir()
+	workDir := defaultWorkDir()
 	if *dir != "" {
 		abs, err := filepath.Abs(*dir)
 		if err != nil {
@@ -194,13 +194,13 @@ func run() error {
 // startTUI launches the interactive chat, auto-saving the transcript when the
 // user quits so it can be resumed later with `goducky resume`.
 //
-// Mouse capture is deliberately NOT enabled: without it the terminal's native
-// select/copy/paste works, which users expect. Scrolling happens with
-// PageUp/PageDown; arrow up/down recall past prompts.
+// Mouse reporting is enabled so the wheel scrolls the chat; arrow up/down
+// recall past prompts. On most terminals you can still select/copy by holding
+// Ctrl (or Shift) while dragging, and paste with Ctrl+V or right-click.
 func startTUI(a *agent.Agent, cfg *config.Config, auth *config.Auth, workDir, modelName, resumeName string, history []provider.Message) error {
 	m := tui.New(a, workDir, providerLabel(cfg.Provider), modelName, cfg, auth)
 	m.SetHistory(resumeName, history)
-	prog := tea.NewProgram(m, tea.WithAltScreen())
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.SetProgram(prog)
 	if _, err := prog.Run(); err != nil {
 		return err
@@ -208,14 +208,28 @@ func startTUI(a *agent.Agent, cfg *config.Config, auth *config.Auth, workDir, mo
 	return autoSaveChat(m)
 }
 
+// defaultWorkDir returns ~/Documents/goducky on every OS (creating it when
+// needed) so chats and project files always have a stable home.
+func defaultWorkDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return agent.CurrentDir()
+	}
+	wd := filepath.Join(home, "Documents", "goducky")
+	if err := os.MkdirAll(wd, 0o755); err == nil {
+		return wd
+	}
+	return agent.CurrentDir()
+}
+
 // mcpCmd starts the MCP stdio server so external tools (Claude Desktop, IDEs)
 // can use goducky's file/bash tools in a working directory you select.
 func mcpCmd(args []string) error {
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
-	dir := fs.String("dir", "", "working directory for the tools (default: current directory)")
+	dir := fs.String("dir", "", "working directory for the tools (default: ~/Documents/goducky)")
 	fs.Parse(args)
 
-	workDir := agent.CurrentDir()
+workDir := defaultWorkDir()
 	if *dir != "" {
 		abs, err := filepath.Abs(*dir)
 		if err != nil {
@@ -264,7 +278,7 @@ func resumeTUI(s *session.Session) error {
 
 	workDir := s.WorkDir
 	if info, err := os.Stat(workDir); err != nil || !info.IsDir() {
-		workDir = agent.CurrentDir()
+		workDir = defaultWorkDir()
 	}
 
 	p, err := provider.New(cfg, auth)
