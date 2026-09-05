@@ -208,8 +208,9 @@ previous prompts, like a terminal history. Menus (`/config`, `/models`,
 `/provider`) are navigated with arrow keys or WASD: Enter picks, Esc cancels.
 The mouse wheel scrolls the chat, and dragging with the left mouse button
 selects text that is copied to your clipboard as soon as you let go — no
-keyboard needed. `Ctrl+C` copies the last reply, `Ctrl+B` copies the whole
-conversation, `Ctrl+X` quits. Paste with `Ctrl+V` or right-click.
+keyboard needed. `Esc` stops a reply mid-generation (it keeps what was said so
+far), `Ctrl+C` copies the last reply, `Ctrl+B` copies the whole conversation,
+`Ctrl+X` quits. Paste with `Ctrl+V` or right-click.
 
 `/config` opens an interactive settings menu — pick an option (provider, model,
 auto-approve, Ollama host, iterations, output, excluded dirs) and change it

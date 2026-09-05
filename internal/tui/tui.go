@@ -100,6 +100,7 @@ type model struct {
 	pendingMessages []provider.Message
 	picker          *pickerState
 	configPrompt    string // when set, the next Enter sets this config key
+	promptKeyFor    string // when set, the input collects & saves an API key for this provider
 	sessionName     string // set when the chat was resumed or /save was used
 	history         []string
 	histCursor      int
@@ -108,6 +109,13 @@ type model struct {
 	selStart   *selPos          // anchor (doc row, cell), nil when not selecting
 	selEnd     *selPos          // current drag endpoint
 	plainLines []string         // plain-text body lines, parallel to viewport lines
+
+	runCtx    context.Context
+	cancelRun context.CancelFunc // cancels the in-flight agent turn (Esc)
+	cancelled bool               // the last turn was stopped by the user
+
+	lastArrow  time.Time // last arrow-key press, for wheel-vs-history detection
+	arrowBurst int       // how many arrow presses arrived in quick succession
 }
 
 // selPos is a position in the chat body: content row + cell column.
@@ -228,6 +236,25 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.promptKeyFor != "" {
+			// Collecting an API key: Enter saves it, Esc cancels, other keys
+			// keep editing (rendered masked).
+			switch msg.String() {
+			case "enter":
+				return m.submitKeyPrompt()
+			case "esc":
+				m.promptKeyFor = ""
+				m.input.Reset()
+				m.input.Placeholder = "Ask GoDucky... (Enter to send)"
+				m.addItem("assistant", "Cancelled — still on "+m.agent.ProviderName()+".")
+				m.viewport.SetContent(m.renderBody())
+				m.viewport.GotoBottom()
+				return m, nil
+			}
+			var c tea.Cmd
+			m.input, c = m.input.Update(msg)
+			return m, c
+		}
 		switch msg.String() {
 		case "ctrl+c":
 			return m.copyToClipCmd()
@@ -235,6 +262,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.copyAllCmd()
 		case "ctrl+x", "ctrl+d":
 			return m, tea.Quit
+		case "enter":
+			if m.approvalPending && m.approvalChan != nil {
+				return m.approvalAnswer(true)
+			}
+		case "esc":
+			if m.approvalPending && m.approvalChan != nil {
+				return m.approvalAnswer(false)
+			}
+			if m.running {
+				return m.stopTurn()
+			}
 		case "pgup":
 			m.viewport.LineUp(viewportMouseWheelDelta)
 			return m, nil
@@ -248,10 +286,26 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 			return m, nil
 		case "up", "down":
-			// Arrow up/down recall previous prompts like a shell history.
-			// This requires mouse capture to be off so the terminal's native
-			// select/copy/paste still works; scrolling uses PageUp/PageDown.
+			// Arrow up/down recall previous prompts like a shell history,
+			// unless they come in a rapid burst — terminals that can't report
+			// the mouse translate the wheel into fast arrow keys, and those
+			// should scroll the chat instead of recalling your last prompt.
 			if !m.running && !m.approvalPending {
+				now := time.Now()
+				if now.Sub(m.lastArrow) <= 200*time.Millisecond {
+					m.arrowBurst++
+				} else {
+					m.arrowBurst = 1
+				}
+				m.lastArrow = now
+				if m.arrowBurst >= 2 {
+					if msg.String() == "up" {
+						m.viewport.LineUp(viewportMouseWheelDelta)
+					} else {
+						m.viewport.LineDown(viewportMouseWheelDelta)
+					}
+					return m, nil
+				}
 				if msg.String() == "up" {
 					m.recallHistory()
 				} else {
@@ -266,7 +320,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if m.viewport.Height > 0 {
-			// Left-drag selects (or starts a new selection), wheel scrolls.
+			// The wheel always scrolls the chat (like a messaging app). It is
+			// handled right here so it never falls through to prompt-recall.
+			if msg.Button == tea.MouseButtonWheelUp && msg.Action == tea.MouseActionPress {
+				m.viewport.LineUp(viewportMouseWheelDelta)
+				return m, nil
+			}
+			if msg.Button == tea.MouseButtonWheelDown && msg.Action == tea.MouseActionPress {
+				m.viewport.LineDown(viewportMouseWheelDelta)
+				return m, nil
+			}
+			// Left-drag selects (or starts a new selection).
 			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
 				if row, col, ok := m.mouseToDoc(msg); ok {
 					m.selecting = true
@@ -287,11 +351,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selecting && msg.Action == tea.MouseActionRelease {
 				m.selecting = false
 				return m.copySelectionCmd()
-			}
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
 			}
 		}
 		return m, tea.Batch(cmds...)
@@ -334,15 +393,21 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.addItem("user", msg.text)
 		m.current = ""
 		m.running = true
+		m.cancelled = false
 		m.status = "Thinking..."
 		m.viewport.SetContent(m.renderBody())
 		m.viewport.GotoBottom()
 		msgs := m.toProviderMessages()
 		msgs = append(msgs, provider.NewTextMessage(provider.RoleUser, msg.text))
 		m.pendingMessages = msgs
-		cmds = append(cmds, m.runAgent())
+		var ctx context.Context
+		ctx, m.cancelRun = context.WithCancel(context.Background())
+		cmds = append(cmds, m.runAgent(ctx))
 
 	case completeMsg:
+		if m.cancelled {
+			return m.finishStopped(), textarea.Blink
+		}
 		if m.current != "" {
 			m.addItem("assistant", m.current)
 		} else if msg.text != "" {
@@ -357,12 +422,36 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, textarea.Blink
 
 	case agentErrMsg:
+		if m.cancelled {
+			return m.finishStopped(), textarea.Blink
+		}
 		m.addItem("assistant", "❌ "+msg.err.Error())
 		m.running = false
 		m.status = ""
 		m.input.Focus()
 		m.viewport.SetContent(m.renderBody())
 		return m, textarea.Blink
+
+	case apiKeyMsg:
+		m.status = ""
+		m.promptKeyFor = ""
+		m.input.Reset()
+		m.input.Placeholder = "Ask GoDucky... (Enter to send)"
+		if msg.err != nil {
+			m.addItem("assistant", "❌ Key not saved: "+msg.err.Error())
+			m.viewport.SetContent(m.renderBody())
+			m.viewport.GotoBottom()
+			return m, nil
+		}
+		setAuthKey(m.auth, msg.provider, msg.key)
+		if msg.verified {
+			m.addItem("assistant", "API key for "+msg.provider+" saved and verified.")
+		} else {
+			m.addItem("assistant", "API key for "+msg.provider+" saved (couldn't verify — offline?).")
+		}
+		m.viewport.SetContent(m.renderBody())
+		m.viewport.GotoBottom()
+		return m, m.switchProvider(msg.provider)
 
 	case openErrMsg:
 		m.addItem("assistant", "Could not open your browser: "+msg.err.Error()+"\nThe repo is at https://github.com/Go-Ducky/cli")
@@ -1171,16 +1260,28 @@ func (m *model) View() string {
 		statusLine = statusStyle.Render(m.status) + "\n"
 	}
 	inputView := ""
-	if !m.running && m.picker == nil {
+	if m.promptKeyFor != "" {
+		// Mask the API key while it is being pasted in.
+		n := len([]rune(m.input.Value()))
+		if max := m.width - 20; n > max {
+			n = max
+		}
+		masked := strings.Repeat("•", n)
+		if n == 0 {
+			masked = "paste API key…"
+		}
+		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("🔑 " + masked)
+	} else if !m.running && m.picker == nil {
 		inputView = m.input.View()
 	} else if m.picker == nil {
-		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("GoDucky is working... (Ctrl+X to quit)")
+		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("GoDucky is working... (Esc to stop · Ctrl+X to quit)")
 	}
 	return header + view + "\n" + statusLine + inputView
 }
 
-// runAgent starts the agent in a returned tea.Cmd (runs in its own goroutine).
-func (m *model) runAgent() tea.Cmd {
+// runAgent starts the agent in a returned tea.Cmd (runs in its own goroutine)
+// using the given context, so Esc can cancel the turn.
+func (m *model) runAgent(ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		messages := m.pendingMessages
 		m.agent.SetApprover(func(desc string, args map[string]any) bool {
@@ -1196,12 +1297,130 @@ func (m *model) runAgent() tea.Cmd {
 			}
 		})
 		cb := &tuiCallback{m: m}
-		result, _, err := m.agent.Run(context.Background(), messages, cb)
+		result, _, err := m.agent.Run(ctx, messages, cb)
 		if err != nil {
 			return agentErrMsg{err: err}
 		}
 		return completeMsg{text: result}
 	}
+}
+
+// approvalAnswer answers a pending tool-approval prompt.
+func (m *model) approvalAnswer(ok bool) (tea.Model, tea.Cmd) {
+	if m.approvalChan == nil {
+		return m, nil
+	}
+	ch := m.approvalChan
+	return m, func() tea.Msg {
+		return approvalAnswerMsg{approved: ok, respond: ch}
+	}
+}
+
+// stopTurn cancels the in-flight agent turn (Esc while running).
+func (m *model) stopTurn() (tea.Model, tea.Cmd) {
+	if m.cancelRun != nil {
+		m.cancelRun()
+		m.cancelRun = nil
+	}
+	m.cancelled = true
+	m.running = false
+	m.status = "Stopping… keeping what was said so far"
+	m.input.Focus()
+	m.viewport.SetContent(m.renderBody())
+	return m, nil
+}
+
+// finishStopped commits the partial reply and reports that the turn was stopped.
+func (m *model) finishStopped() tea.Model {
+	if m.current != "" {
+		m.addItem("assistant", m.current)
+	}
+	m.addItem("assistant", "✋ Stopped.")
+	m.current = ""
+	m.cancelled = false
+	m.cancelRun = nil
+	m.running = false
+	m.status = ""
+	m.input.Focus()
+	m.viewport.SetContent(m.renderBody())
+	m.viewport.GotoBottom()
+	return m
+}
+
+// apiKeyMsg reports the outcome of saving an API key typed in the chat.
+type apiKeyMsg struct {
+	provider string
+	key      string
+	verified bool
+	err      error
+}
+
+// submitKeyPrompt validates and saves the key typed into the input, then
+// returns the flow to apiKeyMsg so the provider switch can finish on the loop.
+func (m *model) submitKeyPrompt() (tea.Model, tea.Cmd) {
+	key := strings.TrimSpace(m.input.Value())
+	prov := m.promptKeyFor
+	if key == "" {
+		m.status = "Empty key — paste your API key and press Enter."
+		return m, nil
+	}
+	m.status = "Checking key with " + prov + "…"
+	m.viewport.SetContent(m.renderBody())
+	return m, func() tea.Msg {
+		verified := true
+		if err := provider.ValidateAPIKey(prov, key); err != nil {
+			if strings.Contains(err.Error(), "rejected") {
+				return apiKeyMsg{provider: prov, key: key, err: err}
+			}
+			verified = false // offline/unreachable: save anyway
+		}
+		auth, err := config.LoadAuth()
+		if err != nil {
+			return apiKeyMsg{provider: prov, key: key, err: err}
+		}
+		setAuthKey(auth, prov, key)
+		if err := auth.Save(); err != nil {
+			return apiKeyMsg{provider: prov, key: key, err: err}
+		}
+		return apiKeyMsg{provider: prov, key: key, verified: verified}
+	}
+}
+
+// setAuthKey stores a key on an Auth struct.
+func setAuthKey(a *config.Auth, prov, key string) {
+	switch prov {
+	case "groq":
+		a.GroqAPIKey = key
+	case "openai", "openai_compatible":
+		a.OpenAIAPIKey = key
+	case "anthropic":
+		a.AnthropicAPIKey = key
+	case "gemini":
+		a.GeminiAPIKey = key
+	case "openrouter":
+		a.OpenRouterAPIKey = key
+	}
+}
+
+// hasProviderKey reports whether a key is already available (auth file or env).
+func (m *model) hasProviderKey(prov string) bool {
+	var akey, env string
+	switch prov {
+	case "groq":
+		akey, env = m.auth.GroqAPIKey, m.cfg.Groq.EnvKey
+	case "openai", "openai_compatible":
+		akey, env = m.auth.OpenAIAPIKey, m.cfg.OpenAI.EnvKey
+	case "anthropic":
+		akey, env = m.auth.AnthropicAPIKey, m.cfg.Anthropic.EnvKey
+	case "gemini":
+		akey, env = m.auth.GeminiAPIKey, m.cfg.Gemini.EnvKey
+	case "openrouter":
+		akey, env = m.auth.OpenRouterAPIKey, m.cfg.OpenRouter.EnvKey
+	}
+	if akey != "" {
+		return true
+	}
+	return env != "" && os.Getenv(env) != ""
 }
 
 func approvalLabel(desc string, args map[string]any) string {
@@ -1259,7 +1478,7 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 		m.providerPicker()
 	case "/login":
 		m.addItem("assistant",
-			"To add a cloud API key, quit and run:\n  goducky --login openrouter\n  goducky --login groq\n  goducky --login openai\n  goducky --login anthropic\n  goducky --login gemini\nThen start goducky again. Groq has a free tier.")
+			"To add a cloud API key, just type:\n  /provider openrouter\n  /provider groq\n  /provider openai\n  /provider anthropic\n  /provider gemini\nGoDucky prompts you to paste the key, verifies it live, saves it, and switches.\nYou can also save one without the chat: run `goducky --login openrouter`.")
 	case "/save":
 		name := strings.TrimSpace(arg)
 		if name == "" {
@@ -1356,6 +1575,20 @@ func (m *model) switchProvider(name string) tea.Cmd {
 		m.addItem("assistant", "Already using "+name)
 		return nil
 	}
+	if name != "ollama" && !m.hasProviderKey(name) {
+		// Cloud provider with no key yet: collect one inline before switching.
+		m.promptKeyFor = name
+		m.input.Reset()
+		m.input.Placeholder = "paste API key…"
+		m.addItem("assistant",
+			name+" needs an API key to answer.\n"+
+				"Paste your "+name+" API key below and press Enter (Esc to cancel) — "+
+				"it's verified live, saved, and then you're switched over automatically.")
+		m.input.Focus()
+		m.viewport.SetContent(m.renderBody())
+		m.viewport.GotoBottom()
+		return nil
+	}
 	m.cfg.Provider = name
 	p, err := provider.New(m.cfg, m.auth)
 	if err != nil {
@@ -1369,8 +1602,7 @@ func (m *model) switchProvider(name string) tea.Cmd {
 	m.provider = name
 	_ = m.cfg.Save()
 	m.addItem("assistant",
-		"Switched to provider "+name+" (model: "+modelName+").\n"+
-			"If no API key is set, run `goducky --login "+name+"`.")
+		"Switched to provider "+name+" (model: "+modelName+").")
 	return nil
 }
 
@@ -1560,7 +1792,7 @@ func helpText() string {
   /exit            Quit GoDucky
 
 Controls:
-  Enter            Send / run command
+  Enter            Send / run command  ·  Esc  Stop the reply mid-generation
   Arrow up/down    Recall previous prompts (like a terminal history)
   PageUp/PageDown  Scroll the chat   ·   Home/End  Jump to top/bottom
   Mouse            Wheel scrolls the chat; drag selects text and it is copied
