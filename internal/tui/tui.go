@@ -2,7 +2,9 @@ package tui
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -163,7 +165,7 @@ func (m *model) Session() *session.Session {
 }
 
 func (m *model) Init() tea.Cmd {
-	m.addMetaItem("assistant", "Type a message or /help — Ctrl+C or Ctrl+X to quit.")
+	m.addMetaItem("assistant", "Type a message or /help — Ctrl+C copies the last reply, Ctrl+X quits.")
 	m.input.Focus()
 	return tea.Batch(tea.EnterAltScreen, textarea.Blink)
 }
@@ -213,7 +215,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "ctrl+x", "ctrl+d":
+		case "ctrl+c":
+			return m.copyToClipCmd()
+		case "ctrl+x", "ctrl+d":
 			return m, tea.Quit
 		case "pgup":
 			m.viewport.LineUp(viewportMouseWheelDelta)
@@ -344,6 +348,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.viewport.SetContent(m.renderBody())
 		m.viewport.GotoBottom()
+		return m, nil
+
+	case copiedMsg:
+		m.status = "Copied to " + msg.method + "."
+		m.viewport.SetContent(m.renderBody())
 		return m, nil
 
 	case modelsMsg:
@@ -751,6 +760,71 @@ func (m *model) providerPicker() {
 	m.viewport.GotoBottom()
 }
 
+// copiedMsg reports after a Ctrl+C text copy.
+type copiedMsg struct{ method string }
+
+// copyText returns what Ctrl+C copies: the last assistant reply, or the whole
+// transcript when there is no reply yet.
+func (m *model) copyText() string {
+	for i := len(m.items) - 1; i >= 0; i-- {
+		if m.items[i].kind == "assistant" {
+			return m.items[i].text
+		}
+	}
+	var sb strings.Builder
+	for _, it := range m.items {
+		if it.meta {
+			continue
+		}
+		sb.WriteString(it.text)
+		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// copyToClipCmd is the Ctrl+C handler: it copies the last reply (or the whole
+// transcript) to the clipboard instead of quitting.
+func (m *model) copyToClipCmd() (tea.Model, tea.Cmd) {
+	text := m.copyText()
+	if text == "" {
+		m.status = "Nothing to copy yet."
+		m.viewport.SetContent(m.renderBody())
+		return m, nil
+	}
+	m.status = "Copying…"
+	m.viewport.SetContent(m.renderBody())
+	return m, func() tea.Msg {
+		return copiedMsg{method: copyToClipboard(text)}
+	}
+}
+
+// copyToClipboard copies text using a native helper when available, otherwise
+// the OSC 52 terminal clipboard (works in Windows Terminal, iTerm2, kitty…).
+func copyToClipboard(text string) string {
+	var candidates [][]string
+	switch runtime.GOOS {
+	case "windows":
+		candidates = [][]string{{"clip"}}
+	case "darwin":
+		candidates = [][]string{{"pbcopy"}}
+	default:
+		candidates = [][]string{{"wl-copy"}, {"xclip", "-selection", "clipboard"}, {"xsel", "--clipboard", "--input"}}
+	}
+	for _, c := range candidates {
+		if _, err := exec.LookPath(c[0]); err != nil {
+			continue
+		}
+		cmd := exec.Command(c[0], c[1:]...)
+		cmd.Stdin = strings.NewReader(text)
+		if err := cmd.Run(); err == nil {
+			return "system clipboard"
+		}
+	}
+	b64 := base64.StdEncoding.EncodeToString([]byte(text))
+	fmt.Fprintf(os.Stdout, "\x1b]52;c;%s\x07", b64)
+	return "terminal clipboard"
+}
+
 func (m *model) View() string {
 	body := m.renderBody()
 	content := body
@@ -777,7 +851,7 @@ func (m *model) View() string {
 	if !m.running && m.picker == nil {
 		inputView = m.input.View()
 	} else if m.picker == nil {
-		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("GoDucky is working... (Ctrl+C to quit)")
+		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("GoDucky is working... (Ctrl+X to quit)")
 	}
 	return header + view + "\n" + statusLine + inputView
 }
@@ -1165,10 +1239,12 @@ func helpText() string {
 Controls:
   Enter            Send / run command
   Arrow up/down    Recall previous prompts (like a terminal history)
-  Mouse wheel      Scroll the chat   ·   Ctrl+C / Ctrl+X  Quit
-  PageUp/PageDown  Scroll faster
-  To copy: hold Ctrl (or Shift) while dragging to select, then Ctrl+C
+  Mouse wheel      Scroll the chat   ·   PageUp/PageDown  Scroll faster
+  Ctrl+C           Copy the last reply to the clipboard
+  Ctrl+X           Quit
   Paste with Ctrl+V or right-click
+  To select any text with the mouse, hold Ctrl (or Shift on some terminals)
+  while dragging, then copy with the terminal's own Ctrl+C / right-click.
 
 Chats are auto-saved when you quit. Resume with goducky resume <number-or-name>
 and rename with goducky rename <number-or-name> <new-name>.
