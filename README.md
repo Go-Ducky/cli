@@ -160,6 +160,9 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 /config         View or edit configuration
 /provider       Choose a provider interactively (or: /provider <name>)
 /model <name>   Set the model for the current provider
+/save <name>    Save this chat so you can resume it later
+/rename <name>  Rename the current chat
+/sessions       List saved chats (resume with goducky resume <n>)
 /login          How to add a cloud API key
 /clear          Clear the conversation
 /exit           Quit
@@ -175,6 +178,25 @@ Keys are the dotted JSON paths (`provider`, `ollama.host`, `openrouter.model`,
 `agent.auto_approve`), with friendly aliases for the common ones:
 `host`, `auto-approve` (on/off), `iterations`, `output`, `exclude`. Provider and
 model changes apply immediately; everything else is picked up on the next run.
+
+### Chat sessions
+
+Chats are saved automatically when you quit the TUI, so you can pick up where you
+left off later. With no name yet, they get one like `chat-2026-09-05-19-44`; use
+`/save <name>` inside the TUI to give the current chat a friendlier name (or
+`/rename <name>` to change it).
+
+```
+goducky sessions                          # list saved chats (a number or name works)
+goducky resume                            # same as sessions if you forget the id
+goducky resume 2                          # resume the 2nd-most-recent chat
+goducky resume "fix bug"                  # resume by name
+goducky rename "chat-2026-09-05" "fix bug" # rename a chat
+```
+
+`resume` looks for an exact name first, then a name fragment, then a number.
+Sessions remember their provider, model, history, and working directory, so a
+resumed chat continues on the same model and in the same project.
 
 ### Updating
 
@@ -203,6 +225,9 @@ goducky
   -version           Print version and exit
   completion <shell> Print a tab-completion script (bash, zsh, fish, powershell)
   update [tag]       Self-update to the latest release (or a specific tag)
+  sessions           List saved chats
+  resume <n-or-name> Resume a saved chat
+  rename <n-or-name> <new-name>  Rename a saved chat
 ```
 
 ### Permissions

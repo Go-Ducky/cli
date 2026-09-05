@@ -175,7 +175,7 @@ func (o *Ollama) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("ollama error (%d): %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return nil, friendlyOllamaError(fmt.Errorf("ollama error (%d): %s", resp.StatusCode, strings.TrimSpace(string(b))))
 	}
 
 	var out ollamaResponse
@@ -183,7 +183,7 @@ func (o *Ollama) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		return nil, err
 	}
 	if out.Error != "" {
-		return nil, fmt.Errorf("ollama: %s", out.Error)
+		return nil, friendlyOllamaError(fmt.Errorf("ollama: %s", out.Error))
 	}
 
 	respMsg := ollamaToMessage(out.Message)
@@ -207,7 +207,7 @@ func (o *Ollama) streamChat(ctx context.Context, httpReq *http.Request, payload 
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("ollama error (%d): %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return nil, friendlyOllamaError(fmt.Errorf("ollama error (%d): %s", resp.StatusCode, strings.TrimSpace(string(b))))
 	}
 
 	var usage Usage
@@ -223,7 +223,7 @@ func (o *Ollama) streamChat(ctx context.Context, httpReq *http.Request, payload 
 			continue
 		}
 		if chunk.Error != "" {
-			return nil, fmt.Errorf("ollama: %s", chunk.Error)
+			return nil, friendlyOllamaError(fmt.Errorf("ollama: %s", chunk.Error))
 		}
 		if chunk.PromptEval > 0 {
 			usage.InputTokens = chunk.PromptEval
@@ -270,6 +270,22 @@ func (o *Ollama) streamChat(ctx context.Context, httpReq *http.Request, payload 
 func mustMarshal(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+// friendlyOllamaError adds actionable guidance when a model fails to load in
+// Ollama (llama-server crash, OOM, load failed), which is a common symptom of
+// a model too big for the machine.
+func friendlyOllamaError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "load failed") || strings.Contains(msg, "terminated") ||
+		strings.Contains(msg, "exit status") || strings.Contains(msg, "insufficient") ||
+		strings.Contains(msg, "out of memory") {
+		return fmt.Errorf("%w\n→ The model failed to load in Ollama. Try a smaller model (e.g. qwen2.5-coder:3b), close other apps, or run `ollama rm <model>` and pull it again.", err)
+	}
+	return err
 }
 
 // ollamaToMessage converts an Ollama message into our Message type.

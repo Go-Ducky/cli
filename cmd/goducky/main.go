@@ -14,6 +14,7 @@ import (
 	"github.com/Go-Ducky/cli/internal/agent/tools"
 	"github.com/Go-Ducky/cli/internal/config"
 	"github.com/Go-Ducky/cli/internal/provider"
+	"github.com/Go-Ducky/cli/internal/session"
 	"github.com/Go-Ducky/cli/internal/setup"
 	"github.com/Go-Ducky/cli/internal/tui"
 	"github.com/charmbracelet/bubbletea"
@@ -46,12 +47,34 @@ func run() error {
 		return nil
 	}
 
-	if len(flag.Args()) > 0 && flag.Args()[0] == "completion" {
-		return completionCmd(flag.Args()[1:])
-	}
-
-	if len(flag.Args()) > 0 && flag.Args()[0] == "update" {
-		return updateCmd(flag.Args()[1:])
+	if len(flag.Args()) > 0 {
+		switch flag.Args()[0] {
+		case "completion":
+			return completionCmd(flag.Args()[1:])
+		case "update":
+			return updateCmd(flag.Args()[1:])
+		case "sessions":
+			return session.PrintList()
+		case "resume":
+			if len(flag.Args()) == 1 {
+				return session.PrintList()
+			}
+			s, err := session.Load(flag.Args()[1])
+			if err != nil {
+				return err
+			}
+			return resumeTUI(s)
+		case "rename":
+			args := flag.Args()[1:]
+			if len(args) != 2 {
+				return fmt.Errorf("usage: goducky rename <number-or-name> <new-name>")
+			}
+			if err := session.Rename(args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Printf("Chat renamed to %q. Resume with: goducky resume %s\n", args[1], args[1])
+			return nil
+		}
 	}
 
 	if *apiKeyCmd != "" {
@@ -162,13 +185,72 @@ func run() error {
 		return oneShot(os.Args, a, workDir, *uniquePrompt)
 	}
 
+	return startTUI(a, cfg, auth, workDir, modelName, "", nil)
+}
+
+// startTUI launches the interactive chat, auto-saving the transcript when the
+// user quits so it can be resumed later with `goducky resume`.
+func startTUI(a *agent.Agent, cfg *config.Config, auth *config.Auth, workDir, modelName, resumeName string, history []provider.Message) error {
 	m := tui.New(a, workDir, providerLabel(cfg.Provider), modelName, cfg, auth)
+	m.SetHistory(resumeName, history)
 	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.SetProgram(prog)
 	if _, err := prog.Run(); err != nil {
 		return err
 	}
+	return autoSaveChat(m)
+}
+
+func autoSaveChat(m interface{ Session() *session.Session }) error {
+	s := m.Session()
+	if len(s.Messages) == 0 {
+		return nil
+	}
+	if s.Name == "" {
+		s.Name = session.AutoName()
+	}
+	if err := session.Save(s); err != nil {
+		return fmt.Errorf("could not save chat: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "\nChat saved as %q. Resume later with: goducky resume %s\n", s.Name, s.Name)
 	return nil
+}
+
+// resumeTUI loads a saved chat and starts the TUI with its history, provider,
+// model and working directory.
+func resumeTUI(s *session.Session) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	auth, err := config.LoadAuth()
+	if err != nil {
+		return err
+	}
+	cfg.Provider = s.Provider
+	cfg.SetProviderModel(s.Provider, s.Model)
+
+	workDir := s.WorkDir
+	if info, err := os.Stat(workDir); err != nil || !info.IsDir() {
+		workDir = agent.CurrentDir()
+	}
+
+	p, err := provider.New(cfg, auth)
+	if err != nil {
+		return err
+	}
+	modelName := provider.ResolveModel(cfg, "")
+
+	reg := tools.DefaultRegistry()
+	sys := agent.SystemPrompt(workDir)
+	agentCfg := &agent.Config{
+		MaxIterations:  cfg.Agent.MaxIterations,
+		MaxOutputChars: cfg.Agent.MaxOutputChars,
+		AutoApprove:    cfg.Agent.AutoApprove,
+	}
+	a := agent.New(p, modelName, sys, workDir, agentCfg, reg)
+	a.SetAutoApprove(cfg.Agent.AutoApprove)
+	return startTUI(a, cfg, auth, workDir, modelName, s.Name, s.Messages)
 }
 
 func oneShot(args []string, a *agent.Agent, workDir, prompt string) error {

@@ -9,6 +9,7 @@ import (
 	"github.com/Go-Ducky/cli/internal/agent"
 	"github.com/Go-Ducky/cli/internal/config"
 	"github.com/Go-Ducky/cli/internal/provider"
+	"github.com/Go-Ducky/cli/internal/session"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbletea"
@@ -80,6 +81,7 @@ type model struct {
 	approvalPending bool
 	pendingMessages []provider.Message
 	picker          *pickerState
+	sessionName     string // set when the chat was resumed or /save was used
 }
 
 var (
@@ -116,6 +118,34 @@ func New(a *agent.Agent, workDir, providerName, modelName string, cfg *config.Co
 
 // SetProgram wires the bubbletea program so callbacks can Send messages.
 func (m *model) SetProgram(p *tea.Program) { m.program = p }
+
+// SetHistory preloads a previously saved chat into the transcript before the
+// TUI starts (used by `goducky resume`). The prior messages naturally become
+// the model's context on the next prompt.
+func (m *model) SetHistory(name string, msgs []provider.Message) {
+	if name != "" {
+		m.sessionName = name
+		m.addMetaItem("assistant", "Resumed chat "+name+".")
+	}
+	for _, msg := range msgs {
+		for _, blk := range msg.Content {
+			if blk.Type == "text" && blk.Text != "" && (msg.Role == provider.RoleUser || msg.Role == provider.RoleAssistant) {
+				m.addItem(string(msg.Role), blk.Text)
+			}
+		}
+	}
+}
+
+// Session returns the current chat in a form that can be saved to disk.
+func (m *model) Session() *session.Session {
+	return &session.Session{
+		Name:      m.sessionName,
+		Provider:  m.agent.ProviderName(),
+		Model:     m.modelName,
+		WorkDir:   m.workDir,
+		Messages:  m.toProviderMessages(),
+	}
+}
 
 func (m *model) Init() tea.Cmd {
 	m.addMetaItem("assistant", m.assistantName()+" ready. Type a message or /help. Ctrl+C or Ctrl+X to quit.")
@@ -596,6 +626,49 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 	case "/login":
 		m.addItem("assistant",
 			"To add a cloud API key, quit and run:\n  goducky --login openrouter\n  goducky --login groq\n  goducky --login openai\n  goducky --login anthropic\n  goducky --login gemini\nThen start goducky again. Groq has a free tier.")
+	case "/save":
+		name := strings.TrimSpace(arg)
+		if name == "" {
+			m.addItem("assistant", "Usage: /save <name>\nThe chat is also auto-saved when you quit and resumed with `goducky resume`.")
+			return nil
+		}
+		s := m.Session()
+		s.Name = name
+		if err := session.Save(s); err != nil {
+			m.addItem("assistant", "Save failed: "+err.Error())
+			return nil
+		}
+		m.sessionName = name
+		m.addItem("assistant", "Chat saved as \""+name+"\". Resume later with: goducky resume "+name)
+	case "/rename":
+		name := strings.TrimSpace(arg)
+		if name == "" {
+			m.addItem("assistant", "Usage: /rename <new-name>")
+			return nil
+		}
+		old := m.sessionName
+		if old == "" {
+			m.addItem("assistant", "This chat isn't saved yet — use /save <name> first.")
+			return nil
+		}
+		if err := session.Rename(old, name); err != nil {
+			m.addItem("assistant", "Rename failed: "+err.Error())
+			return nil
+		}
+		m.sessionName = name
+		m.addItem("assistant", "Chat renamed to \""+name+"\".")
+	case "/sessions":
+		var sb strings.Builder
+		sessions, err := session.List()
+		if err != nil {
+			m.addItem("assistant", "Could not list chats: "+err.Error())
+			return nil
+		}
+		sb.WriteString("Saved chats (resume from a new terminal with `goducky resume <n>`):\n")
+		for i, s := range sessions {
+			fmt.Fprintf(&sb, "  %2d. %s (%s / %s)\n", i+1, s.Name, s.Provider, s.Model)
+		}
+		m.addItem("assistant", strings.TrimSuffix(sb.String(), "\n"))
 	case "/setup":
 		m.addItem("assistant", "Run `goducky` in a terminal after quitting to re-run setup, or pull a local model with `ollama pull qwen2.5-coder:7b`.")
 	case "/clear":
@@ -702,21 +775,7 @@ func (m *model) configCmd(arg string) tea.Cmd {
 func (m *model) applyModel(model string) {
 	m.agent.SetModel(model)
 	m.modelName = model
-	m.cfg.Model = model
-	switch m.agent.ProviderName() {
-	case "ollama":
-		m.cfg.Ollama.Model = model
-	case "groq":
-		m.cfg.Groq.Model = model
-	case "openai", "openai_compatible":
-		m.cfg.OpenAI.Model = model
-	case "openrouter":
-		m.cfg.OpenRouter.Model = model
-	case "anthropic":
-		m.cfg.Anthropic.Model = model
-	case "gemini":
-		m.cfg.Gemini.Model = model
-	}
+	m.cfg.SetProviderModel(m.agent.ProviderName(), model)
 }
 
 func configHelp(cfg *config.Config) string {
@@ -759,6 +818,9 @@ func helpText() string {
   /config          View or edit configuration (aliases: host, auto-approve, iterations, output)
   /model <name>    Set the model for the current provider
   /provider        Choose a provider interactively (or: /provider <name>)
+  /save <name>     Save this chat so you can resume it later
+  /rename <name>   Rename the current chat
+  /sessions        List saved chats (resume with goducky resume <n>)
   /login           How to add a cloud API key
   /clear           Clear the conversation
   /exit            Quit GoDucky
@@ -769,6 +831,9 @@ Controls:
   PageUp/PageDown  Scroll
   Mouse wheel      Scroll
   Arrow/WASD       Navigate menus (Enter picks, Esc cancels)
+
+Chats are auto-saved when you quit. Resume with goducky resume <number-or-name>
+and rename with goducky rename <number-or-name> <new-name>.
 `
 }
 

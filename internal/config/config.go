@@ -286,6 +286,26 @@ func parseBool(s string) (bool, error) {
 	return strconv.ParseBool(s)
 }
 
+// SetProviderModel stores the model for a specific provider block as well as
+// the top-level model, so a resumed chat lands on the right model.
+func (c *Config) SetProviderModel(provider, model string) {
+	c.Model = model
+	switch provider {
+	case "ollama":
+		c.Ollama.Model = model
+	case "groq":
+		c.Groq.Model = model
+	case "openai", "openai_compatible":
+		c.OpenAI.Model = model
+	case "openrouter":
+		c.OpenRouter.Model = model
+	case "anthropic":
+		c.Anthropic.Model = model
+	case "gemini":
+		c.Gemini.Model = model
+	}
+}
+
 // Auth holds API keys, kept separate from config so they aren't committed.
 type Auth struct {
 	GroqAPIKey       string `json:"groq_api_key"`
