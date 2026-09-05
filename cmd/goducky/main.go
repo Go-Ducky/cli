@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Go-Ducky/cli/internal/agent"
 	"github.com/Go-Ducky/cli/internal/agent/tools"
@@ -160,17 +161,11 @@ func run() error {
 	modelName := provider.ResolveModel(cfg, *modelFlag)
 
 	if *listModels {
-		models, err := p.ListModels(context.Background())
-		if err != nil {
-			return fmt.Errorf("listing models: %w", err)
+		auth, aer := config.LoadAuth()
+		if aer != nil {
+			auth = &config.Auth{}
 		}
-		if len(models) == 0 {
-			fmt.Println("model listing not supported for provider:", cfg.Provider)
-			return nil
-		}
-		for _, m := range models {
-			fmt.Println(m)
-		}
+		printModelsCatalog(cfg, auth)
 		return nil
 	}
 
@@ -220,6 +215,83 @@ func defaultWorkDir() string {
 		return wd
 	}
 	return agent.CurrentDir()
+}
+
+// printModelsCatalog prints the best models — the recommended Ollama library
+// models plus each cloud provider's featured models — and marks what the user
+// already has (local pulls and saved API keys).
+func printModelsCatalog(cfg *config.Config, auth *config.Auth) {
+	fmt.Println("Best models")
+	fmt.Println("===========")
+
+	// Local Ollama shortlist, with a checkmark next to what's already pulled.
+	pulled := map[string]bool{}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	models, err := provider.NewOllama(cfg).ListModels(ctx)
+	cancel()
+	if err == nil {
+		for _, m := range models {
+			pulled[m] = true
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("LOCAL - Ollama  (free, private; bigger = smarter, needs more RAM)")
+	for _, g := range setup.RecommendedModels {
+		fmt.Println("  " + strings.Join(g.Models, "  "))
+		fmt.Println("      " + g.Blurb)
+	}
+	if len(pulled) > 0 {
+		var have []string
+		for _, g := range setup.RecommendedModels {
+			for _, m := range g.Models {
+				if pulled[m] {
+					have = append(have, "  ✔ "+m)
+				}
+			}
+		}
+		if len(have) > 0 {
+			fmt.Println()
+			fmt.Println("  Already pulled locally:")
+			fmt.Println(strings.Join(have, "\n"))
+		}
+	} else if err != nil {
+		fmt.Println()
+		fmt.Printf("  (Ollama not reachable: %v — pull any of the above with  goducky /pull or  ollama pull)\n", err)
+	}
+
+	fmt.Println()
+	fmt.Println("CLOUD - each needs a free API key  (use  goducky --login <provider>)")
+	configured := map[string]bool{
+		"groq":       auth.GroqAPIKey != "",
+		"openrouter": auth.OpenRouterAPIKey != "",
+		"openai":     auth.OpenAIAPIKey != "",
+		"anthropic":  auth.AnthropicAPIKey != "",
+		"gemini":     auth.GeminiAPIKey != "",
+	}
+	cloud := []struct {
+		name string
+		note string
+		best []string
+	}{
+		{"groq", "fastest free cloud tier", []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"}},
+		{"openrouter", "one key, many free models", []string{"openrouter/free (any currently-free model)", "qwen/qwen-2.5-coder-7b-instruct"}},
+		{"openai", "ChatGPT models", []string{"gpt-5-mini", "gpt-4o-mini", "gpt-4o"}},
+		{"anthropic", "Claude", []string{"claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"}},
+		{"gemini", "Google", []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}},
+	}
+	for _, p := range cloud {
+		status := "no key yet"
+		if configured[p.name] {
+			status = "✔ key saved"
+		}
+		fmt.Printf("  %-33s %s\n", p.name+" -", "["+status+"]")
+		fmt.Println("    " + strings.Join(p.best, "  "))
+	}
+
+	fmt.Println()
+	fmt.Printf("Current setup: %s · %s\n", cfg.Provider, cfg.Model)
+	fmt.Println("Tip: run goducky and type /models to pick any of these.")
 }
 
 // mcpCmd starts the MCP stdio server so external tools (Claude Desktop, IDEs)
