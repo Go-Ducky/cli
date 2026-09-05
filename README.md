@@ -102,7 +102,7 @@ cloud API key. Groq is a good free starting point.
 goducky                                                  # interactive TUI (default: local Ollama)
 goducky --dir /path/to/project                           # work in a specific folder
 goducky -p "explain this repo"                           # one-shot, non-interactive
-goducky --models                                         # best models from Ollama + every cloud provider
+goducky --models                                         # best models for your active provider
 goducky --provider ollama                                # skip the wizard, use local models
 goducky --provider openrouter                            # cloud models (needs a key)
 ```

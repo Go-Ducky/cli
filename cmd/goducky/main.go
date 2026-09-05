@@ -217,14 +217,28 @@ func defaultWorkDir() string {
 	return agent.CurrentDir()
 }
 
-// printModelsCatalog prints the best models — the recommended Ollama library
-// models plus each cloud provider's featured models — and marks what the user
-// already has (local pulls and saved API keys).
+// printModelsCatalog lists the best models for the active provider only.
 func printModelsCatalog(cfg *config.Config, auth *config.Auth) {
-	fmt.Println("Best models")
-	fmt.Println("===========")
+	prov := cfg.Provider
+	fmt.Printf("Models for %s\n", prov)
+	fmt.Println(strings.Repeat("=", 40))
 
-	// Local Ollama shortlist, with a checkmark next to what's already pulled.
+	switch prov {
+	case "ollama":
+		printOllamaModels(cfg)
+	default:
+		printCloudModels(prov, cfg, auth)
+	}
+
+	fmt.Println()
+	fmt.Println("See another provider with:  goducky --provider <name> --models")
+	fmt.Println("Switch the default in the chat with:  /config provider  (or /provider)")
+}
+
+// printOllamaModels lists the recommended local models and what's already pulled.
+func printOllamaModels(cfg *config.Config) {
+	fmt.Println("(local, free, private; bigger = smarter, needs more RAM)")
+	fmt.Println()
 	pulled := map[string]bool{}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	models, err := provider.NewOllama(cfg).ListModels(ctx)
@@ -233,13 +247,6 @@ func printModelsCatalog(cfg *config.Config, auth *config.Auth) {
 		for _, m := range models {
 			pulled[m] = true
 		}
-	}
-
-	fmt.Println()
-	fmt.Println("LOCAL - Ollama  (free, private; bigger = smarter, needs more RAM)")
-	for _, g := range setup.RecommendedModels {
-		fmt.Println("  " + strings.Join(g.Models, "  "))
-		fmt.Println("      " + g.Blurb)
 	}
 	if len(pulled) > 0 {
 		var have []string
@@ -251,47 +258,77 @@ func printModelsCatalog(cfg *config.Config, auth *config.Auth) {
 			}
 		}
 		if len(have) > 0 {
-			fmt.Println()
-			fmt.Println("  Already pulled locally:")
+			fmt.Println("Already pulled locally:")
 			fmt.Println(strings.Join(have, "\n"))
+			fmt.Println()
 		}
 	} else if err != nil {
+		fmt.Printf("(Ollama not reachable: %v)\n", err)
 		fmt.Println()
-		fmt.Printf("  (Ollama not reachable: %v — pull any of the above with  goducky /pull or  ollama pull)\n", err)
 	}
+	for _, g := range setup.RecommendedModels {
+		fmt.Println(g.Family + " — " + g.Blurb + ":")
+		fmt.Println("  " + strings.Join(g.Models, "  "))
+		fmt.Println()
+	}
+	fmt.Println("Pull one with:  goducky -p \"/pull <model>\"  — or /pull <model> in the chat")
+}
 
+// printCloudModels lists the featured models for one cloud provider and shows
+// how to add the API key if none is saved yet.
+func printCloudModels(prov string, cfg *config.Config, auth *config.Auth) {
+	best := map[string][]string{
+		"groq":              {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"},
+		"openrouter":        {"openrouter/free (any currently-free model)", "qwen/qwen-2.5-coder-7b-instruct"},
+		"openai":            {"gpt-5-mini", "gpt-4o-mini", "gpt-4o"},
+		"openai_compatible": {"qwen2.5-coder:7b", "gpt-4o-mini"},
+		"anthropic":         {"claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"},
+		"gemini":            {"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"},
+	}
+	list := best[prov]
+	if len(list) == 0 {
+		fmt.Println("No featured list for provider " + prov + " yet.")
+		return
+	}
+	fmt.Println("(cloud — these are the best picks with a free API key)")
 	fmt.Println()
-	fmt.Println("CLOUD - each needs a free API key  (use  goducky --login <provider>)")
-	configured := map[string]bool{
-		"groq":       auth.GroqAPIKey != "",
-		"openrouter": auth.OpenRouterAPIKey != "",
-		"openai":     auth.OpenAIAPIKey != "",
-		"anthropic":  auth.AnthropicAPIKey != "",
-		"gemini":     auth.GeminiAPIKey != "",
+	for _, m := range list {
+		fmt.Println("  • " + m)
 	}
-	cloud := []struct {
-		name string
-		note string
-		best []string
-	}{
-		{"groq", "fastest free cloud tier", []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"}},
-		{"openrouter", "one key, many free models", []string{"openrouter/free (any currently-free model)", "qwen/qwen-2.5-coder-7b-instruct"}},
-		{"openai", "ChatGPT models", []string{"gpt-5-mini", "gpt-4o-mini", "gpt-4o"}},
-		{"anthropic", "Claude", []string{"claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"}},
-		{"gemini", "Google", []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}},
+	hasKey := hasAPIKey(prov, cfg, auth)
+	fmt.Println()
+	if !hasKey {
+		fmt.Printf("No API key yet. Add one now:\n\n")
+		fmt.Printf("    goducky --login %s\n\n", prov)
+		fmt.Println("It asks you to paste the key, verifies it against the provider, and saves it.")
+	} else {
+		fmt.Printf("✔ API key saved — run goducky to chat on %s.\n", prov)
 	}
-	for _, p := range cloud {
-		status := "no key yet"
-		if configured[p.name] {
-			status = "✔ key saved"
-		}
-		fmt.Printf("  %-33s %s\n", p.name+" -", "["+status+"]")
-		fmt.Println("    " + strings.Join(p.best, "  "))
-	}
+}
 
-	fmt.Println()
-	fmt.Printf("Current setup: %s · %s\n", cfg.Provider, cfg.Model)
-	fmt.Println("Tip: run goducky and type /models to pick any of these.")
+// hasAPIKey reports whether the provider already has a key (config, auth file,
+// or environment).
+func hasAPIKey(prov string, cfg *config.Config, auth *config.Auth) bool {
+	var key, env string
+	switch prov {
+	case "groq":
+		key, env = auth.GroqAPIKey, cfg.Groq.EnvKey
+	case "openai", "openai_compatible":
+		key, env = auth.OpenAIAPIKey, cfg.OpenAI.EnvKey
+	case "openrouter":
+		key, env = auth.OpenRouterAPIKey, cfg.OpenRouter.EnvKey
+	case "anthropic":
+		key, env = auth.AnthropicAPIKey, cfg.Anthropic.EnvKey
+	case "gemini":
+		key, env = auth.GeminiAPIKey, cfg.Gemini.EnvKey
+	}
+	if key != "" {
+		return true
+	}
+	if env != "" && os.Getenv(env) != "" {
+		return true
+	}
+	return false
 }
 
 // mcpCmd starts the MCP stdio server so external tools (Claude Desktop, IDEs)
