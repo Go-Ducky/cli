@@ -33,15 +33,13 @@ powershell -ExecutionPolicy Bypass -File "$env:TEMP\goducky-install.ps1"
 If Windows warns when you first run it, right-click `goducky.exe` in Explorer and
 choose _Properties → Unblock_.
 
-### macOS
+### macOS & Linux
+
+One curl installer for both (auto-detects the OS and CPU):
 
 ```
 curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/install.sh | bash
 ```
-
-### Linux
-
-Same curl installer as above.
 
 The installers add `goducky` to your shell PATH automatically (bash, zsh, fish, or
 `~/.profile`) — open a new terminal and `goducky` just works.
@@ -58,7 +56,7 @@ irm https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/uninstall.ps1 -O
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\goducky-uninstall.ps1"
 ```
 
-**macOS / Linux**
+**macOS & Linux** (one curl script for both)
 
 ```
 curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/uninstall.sh | bash
