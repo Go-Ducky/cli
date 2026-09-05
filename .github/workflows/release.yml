@@ -32,7 +32,8 @@ jobs:
             IS_DEV="false"
           else
             SHORT="$(git rev-parse --short HEAD)"
-            VERSION="0.1.0-dev.${SHORT}"
+            if [[ -f VERSION ]]; then BASE="$(cat VERSION)"; else BASE="0.1.0"; fi
+            VERSION="${BASE}-dev.${SHORT}"
             TAG="dev-${SHORT}"
             IS_DEV="true"
           fi

@@ -42,7 +42,9 @@ curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/install.s
 ```
 
 The installers add `goducky` to your shell PATH automatically (bash, zsh, fish, or
-`~/.profile`) — open a new terminal and `goducky` just works.
+`~/.profile`) — open a new terminal and `goducky` just works. If GoDucky is
+already installed the script detects it: same version → "you're good to go",
+older version → suggests running `goducky update`.
 
 ### Uninstall
 
@@ -63,7 +65,14 @@ curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/uninstall
 ```
 
 Or do it by hand: delete `~/.goducky/bin/goducky` (or `$HOME\.goducky\bin\goducky.exe`)
-and the PATH lines it added.
+and the PATH lines it added. If GoDucky is already uninstalled, the script just
+tells you so — running it twice is harmless.
+
+### Versions
+
+- Bugfix pushes publish a dev build: `GoDucky 0.1.0-dev.<commit>`.
+- Major (feature) updates bump the stable version (`0.1.1`, then `0.1.2`, …)
+  in the `VERSION` file and are published as `GoDucky 0.1.1` etc.
 
 ## Shell completion
 

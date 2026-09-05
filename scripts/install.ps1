@@ -15,10 +15,33 @@ if ($Version -eq 'latest') {
     $Releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=1"
     $Tag = $Releases[0].tag_name
     $DownloadUrl = "https://github.com/$Repo/releases/download/$Tag/$Asset"
+    $LatestVer = $Releases[0].name -replace '^GoDucky\s+', ''
     Write-Host "Latest release: $Tag" -ForegroundColor Green
 } else {
     $Version = $Version.TrimStart('v')
     $DownloadUrl = "https://github.com/$Repo/releases/download/v$Version/$Asset"
+    $LatestVer = $Version
+}
+
+# Check for an existing install.
+$Existing = $null
+$Cmd = Get-Command goducky -ErrorAction SilentlyContinue
+if ($Cmd) {
+    $Existing = $Cmd.Source
+} elseif (Test-Path -LiteralPath $InstallDir) {
+    $ExePath = Join-Path $InstallDir 'goducky.exe'
+    if (Test-Path -LiteralPath $ExePath) { $Existing = $ExePath }
+}
+$CurVer = ''
+if ($Existing) {
+    $CurVer = (& $Existing --version 2>$null | Select-Object -First 1) -replace '^goducky\s+', ''
+}
+if ($CurVer -and $CurVer -eq $LatestVer) {
+    Write-Host "GoDucky $CurVer is already installed - you're good to go!" -ForegroundColor Green
+    exit 0
+} elseif ($CurVer) {
+    Write-Host "You have GoDucky $CurVer, but the latest is $LatestVer." -ForegroundColor Yellow
+    Write-Host "Update with: goducky update   (re-running this script also updates)" -ForegroundColor Yellow
 }
 
 Write-Host "Downloading $Asset v$Version ..." -ForegroundColor Cyan

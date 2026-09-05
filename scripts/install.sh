@@ -5,6 +5,7 @@ DEFAULT_VERSION="latest"
 REPO="${DUCKY_REPO:-Go-Ducky/cli}"
 INSTALL_DIR="${DUCKY_INSTALL_DIR:-$HOME/.goducky/bin}"
 VERSION="${1:-$DEFAULT_VERSION}"
+BIN_DIR="${INSTALL_DIR/#\~/$HOME}"
 
 info()  { printf "  \033[1;32m>\033[0m %s\n" "$*"; }
 warn()  { printf "  \033[1;33m!\033[0m %s\n" "$*"; }
@@ -43,6 +44,34 @@ if [[ "$VERSION" == "latest" ]]; then
   info "Latest release: $TAG"
 else
   TAG="v${VERSION}"
+fi
+
+# --- check for an existing install -----------------------------------
+LATEST_VER=""
+if [[ "$VERSION" == "latest" ]]; then
+  LATEST_VER="$(printf '%s' "$RELEASE_JSON" | grep -o '"name": *"[^"]*"' | head -1 | sed 's/.*"name": *"//; s/"$//; s/^GoDucky *//' || true)"
+else
+  LATEST_VER="${VERSION#v}"
+fi
+
+EXISTING=""
+if command -v goducky >/dev/null 2>&1; then
+  EXISTING="$(command -v goducky)"
+elif [[ -x "$BIN_DIR/goducky" ]]; then
+  EXISTING="$BIN_DIR/goducky"
+fi
+
+CUR_VER=""
+if [[ -n "$EXISTING" ]]; then
+  CUR_VER="$("$EXISTING" --version 2>/dev/null | awk '{print $2}' || true)"
+fi
+
+if [[ -n "$CUR_VER" && "$LATEST_VER" == "$CUR_VER" ]]; then
+  info "GoDucky $CUR_VER is already installed — you're good to go!"
+  exit 0
+elif [[ -n "$CUR_VER" ]]; then
+  warn "You have GoDucky $CUR_VER, but the latest is $LATEST_VER."
+  warn "Update with: goducky update   (re-running this script also updates)"
 fi
 
 BINARY_URL="https://github.com/$REPO/releases/download/${TAG}/${ASSET}"

@@ -10,6 +10,14 @@ warn()  { printf "  \033[1;33m!\033[0m %s\n" "$*"; }
 
 info "Uninstalling GoDucky CLI"
 
+# Check whether goducky is anywhere on PATH (or at the install dir).
+FOUND=""
+if command -v goducky >/dev/null 2>&1; then
+  FOUND="$(command -v goducky)"
+elif [[ -f "$BIN_DIR/goducky" ]]; then
+  FOUND="$BIN_DIR/goducky"
+fi
+
 # 1. Remove the PATH line(s) the installer added from the user's shell files.
 clean_file() {
   local f="$1"
@@ -27,6 +35,11 @@ for f in \
   "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
   clean_file "$f" || true
 done
+
+if [[ -z "$FOUND" ]]; then
+  info "GoDucky CLI isn't installed — nothing to do."
+  exit 0
+fi
 info "Removed $BIN_DIR from shell PATH files (if present)"
 
 # 2. Remove the binary and the folders the installer created.

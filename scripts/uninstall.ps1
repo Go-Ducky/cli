@@ -17,8 +17,16 @@ if ($UserPath) {
     }
 }
 
-# 2. Remove the binary and the folder the installer created.
+# Check whether goducky is anywhere on the PATH (or at the install dir).
 $Exe = Join-Path $InstallDir 'goducky.exe'
+$Cmd = Get-Command goducky -ErrorAction SilentlyContinue
+if (-not $Cmd -and -not (Test-Path -LiteralPath $Exe)) {
+    Write-Host ""
+    Write-Host "GoDucky CLI isn't installed - nothing to do." -ForegroundColor Yellow
+    exit 0
+}
+
+# 2. Remove the binary and the folder the installer created.
 if (Test-Path -LiteralPath $Exe) {
     Remove-Item -LiteralPath $Exe -Force
     Write-Host "Removed $Exe" -ForegroundColor Green
