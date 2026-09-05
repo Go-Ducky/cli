@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -49,6 +51,9 @@ type ollamaOpMsg struct {
 	model  string
 	err    error
 }
+
+// openErrMsg reports a failed attempt to open the system browser.
+type openErrMsg struct{ err error }
 
 // pickerState renders a small inline menu at the bottom of the transcript
 // (used by /models, /provider and /config provider|model).
@@ -314,6 +319,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.Focus()
 		m.viewport.SetContent(m.renderBody())
 		return m, textarea.Blink
+
+	case openErrMsg:
+		m.addItem("assistant", "Could not open your browser: "+msg.err.Error()+"\nThe repo is at https://github.com/Go-Ducky/cli")
+		return m, nil
 
 	case ollamaOpMsg:
 		m.status = ""
@@ -679,7 +688,24 @@ func (m *model) ensureOllamaModel(model string) tea.Cmd {
 	}
 }
 
+// agentCtx returns the default background context for helper calls.
 func (m *model) agentCtx() context.Context { return context.Background() }
+
+// runOpenBrowser opens a URL in the system browser, cross-platform.
+func (m *model) runOpenBrowser(url string) tea.Cmd {
+	return func() tea.Msg {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		case "windows":
+			cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		default:
+			cmd = exec.Command("xdg-open", url)
+		}
+		return openErrMsg{err: cmd.Start()}
+	}
+}
 
 func containsString(list []string, s string) bool {
 	for _, it := range list {
@@ -886,6 +912,9 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 			err := o.Remove(context.Background(), arg)
 			return ollamaOpMsg{action: "rm", model: arg, err: err}
 		}
+	case "/github":
+		m.addItem("assistant", "Opening https://github.com/Go-Ducky/cli ...")
+		return m.runOpenBrowser("https://github.com/Go-Ducky/cli")
 	case "/setup":
 		m.addItem("assistant", "Run `goducky` in a terminal after quitting to re-run setup, or pull a local model with `ollama pull qwen2.5-coder:7b`.")
 	case "/clear":
@@ -1040,6 +1069,7 @@ func helpText() string {
   /save <name>     Save this chat so you can resume it later
   /rename <name>   Rename the current chat
   /sessions        List saved chats (resume with goducky resume <n>)
+  /github          Open the GoDucky repo in your browser
   /login           How to add a cloud API key
   /clear           Clear the conversation
   /exit            Quit GoDucky

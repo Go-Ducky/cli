@@ -186,6 +186,7 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 /save <name>    Save this chat so you can resume it later
 /rename <name>  Rename the current chat
 /sessions       List saved chats (resume with goducky resume <n>)
+/github         Open the GoDucky repo in your browser
 /login          How to add a cloud API key
 /clear          Clear the conversation
 /exit           Quit
