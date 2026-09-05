@@ -156,7 +156,7 @@ func (m *model) Session() *session.Session {
 }
 
 func (m *model) Init() tea.Cmd {
-	m.addMetaItem("assistant", m.assistantName()+" ready. Type a message or /help — Ctrl+C or Ctrl+X to quit.")
+	m.addMetaItem("assistant", "Type a message or /help — Ctrl+C or Ctrl+X to quit.")
 	m.input.Focus()
 	return tea.Batch(tea.EnterAltScreen, textarea.Blink)
 }
