@@ -46,6 +46,27 @@ Same curl installer as above.
 The installers add `goducky` to your shell PATH automatically (bash, zsh, fish, or
 `~/.profile`) — open a new terminal and `goducky` just works.
 
+### Uninstall
+
+Run the matching uninstall script (it removes the binary and the PATH entries
+the installer added, and asks whether to also delete your saved chats & config):
+
+**Windows**
+
+```powershell
+irm https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/uninstall.ps1 -OutFile "$env:TEMP\goducky-uninstall.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\goducky-uninstall.ps1"
+```
+
+**macOS / Linux**
+
+```
+curl -fsSL https://raw.githubusercontent.com/Go-Ducky/cli/main/scripts/uninstall.sh | bash
+```
+
+Or do it by hand: delete `~/.goducky/bin/goducky` (or `$HOME\.goducky\bin\goducky.exe`)
+and the PATH lines it added.
+
 ## Shell completion
 
 ```bash
