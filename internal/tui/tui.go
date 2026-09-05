@@ -35,6 +35,21 @@ type approvalAnswerMsg struct {
 	respond  chan bool
 }
 
+type modelsMsg struct {
+	provider string
+	models   []string
+	err      error
+}
+
+// pickerState renders a small inline menu at the bottom of the transcript
+// (used by /models, /provider and /config provider|model).
+type pickerState struct {
+	title    string
+	options  []string
+	selected int
+	onPick   func(m *model, option string) tea.Cmd
+}
+
 type transcriptItem struct {
 	kind string // user | assistant | tool
 	text string
@@ -64,6 +79,7 @@ type model struct {
 	approvalChan    chan bool
 	approvalPending bool
 	pendingMessages []provider.Message
+	picker          *pickerState
 }
 
 var (
@@ -72,6 +88,10 @@ var (
 	toolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	alertStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
 	statusStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	headerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true).Background(lipgloss.Color("236")).Padding(0, 1)
+	chipStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Background(lipgloss.Color("237")).Padding(0, 1)
+	highlightStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 )
 
 // New creates the TUI model.
@@ -98,7 +118,7 @@ func New(a *agent.Agent, workDir, providerName, modelName string, cfg *config.Co
 func (m *model) SetProgram(p *tea.Program) { m.program = p }
 
 func (m *model) Init() tea.Cmd {
-	m.addMetaItem("assistant", m.assistantName()+" ready. Type a message or /help. Ctrl+C to quit.")
+	m.addMetaItem("assistant", m.assistantName()+" ready. Type a message or /help. Ctrl+C or Ctrl+X to quit.")
 	m.addMetaItem("assistant", fmt.Sprintf("Provider: %s  Model: %s  Dir: %s", m.provider, m.modelName, m.workDir))
 	m.input.Focus()
 	return tea.Batch(tea.EnterAltScreen, textarea.Blink)
@@ -107,12 +127,40 @@ func (m *model) Init() tea.Cmd {
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	if m.picker != nil {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.String() {
+			case "up", "w", "a", "k":
+				if m.picker.selected > 0 {
+					m.picker.selected--
+				}
+			case "down", "s", "d", "j":
+				if m.picker.selected < len(m.picker.options)-1 {
+					m.picker.selected++
+				}
+			case "enter", " ":
+				opt := m.picker.options[m.picker.selected]
+				cb := m.picker.onPick
+				m.closePicker()
+				if cb != nil {
+					if c := cb(m, opt); c != nil {
+						cmds = append(cmds, c)
+					}
+				}
+			case "esc", "ctrl+c", "ctrl+x", "q":
+				m.closePicker()
+			}
+		}
+		m.viewport.GotoBottom()
+		return m, tea.Batch(cmds...)
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 4
+		m.viewport.Height = msg.Height - 5
 		m.viewport.SetContent(m.renderBody())
 		if m.viewport.Height > 0 {
 			m.input.SetWidth(m.width - 2)
@@ -121,7 +169,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "ctrl+x", "ctrl+d":
 			return m, tea.Quit
 		case "pgup":
 			m.viewport.LineUp(viewportMouseWheelDelta)
@@ -218,6 +266,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetContent(m.renderBody())
 		return m, textarea.Blink
 
+	case modelsMsg:
+		fixed := make([]string, 0, len(msg.models)+2)
+		fixed = append(fixed, msg.models...)
+		fixed = append(fixed, "── Cancel ──")
+		title := "Models for " + msg.provider
+		if msg.err != nil {
+			title += " (live list failed, showing known models)"
+		}
+		m.picker = &pickerState{
+			title:   title,
+			options: fixed,
+			onPick:  pickModel,
+		}
+		m.viewport.GotoBottom()
+		return m, nil
+
 	case approvalRequestMsg:
 		m.status = "⚠ " + msg.desc + "? [Enter] approve  [Esc] deny"
 		m.approvalChan = msg.respond
@@ -299,11 +363,133 @@ func (m *model) renderBody() string {
 	if m.current != "" {
 		sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + m.current)
 	}
+	if m.picker != nil {
+		sb.WriteString("\n\n" + highlightStyle.Render(m.picker.title) + "\n")
+		for i, opt := range m.picker.options {
+			if i == m.picker.selected {
+				sb.WriteString(highlightStyle.Render("❯ "+opt) + "\n")
+			} else {
+				sb.WriteString("  " + opt + "\n")
+			}
+		}
+		sb.WriteString(dimStyle.Render("↑/↓ or W/S to move · Enter to pick · Esc to cancel"))
+	}
 	return sb.String()
 }
 
 func (m *model) assistantName() string {
 	return agent.AssistantName
+}
+
+func (m *model) closePicker() { m.picker = nil }
+
+// openModelsPicker queries the current provider for available models (off the
+// event loop) and opens a picker with the results when ready.
+func (m *model) openModelsPicker() tea.Cmd {
+	prov := m.agent.ProviderName()
+	cfg := m.cfg
+	auth := m.auth
+	return func() tea.Msg {
+		models, err := fetchModelsFor(prov, cfg, auth)
+		return modelsMsg{provider: prov, models: models, err: err}
+	}
+}
+
+// fetchModelsFor lists models for a provider. Ollama, Groq, OpenAI and
+// OpenRouter are queried live; the rest use a small curated list.
+func fetchModelsFor(prov string, cfg *config.Config, auth *config.Auth) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	switch prov {
+	case "ollama":
+		return provider.NewOllama(cfg).ListModels(ctx)
+	case "openrouter":
+		if free, err := provider.OpenRouterFreeModels(ctx, ""); err == nil && len(free) > 0 {
+			return free, nil
+		}
+		return curatedModels(prov), nil
+	case "groq":
+		if models, err := provider.NewGroq(cfg, auth, true).ListModels(ctx); err == nil && len(models) > 0 {
+			return models, nil
+		}
+		return curatedModels(prov), nil
+	case "openai", "openai_compatible":
+		if models, err := provider.NewOpenAI(cfg, auth, prov == "openai_compatible").ListModels(ctx); err == nil && len(models) > 0 {
+			return models, nil
+		}
+		return curatedModels(prov), nil
+	}
+	return curatedModels(prov), nil
+}
+
+// curatedModels is a fallback / default list shown when a live query fails or
+// the provider doesn't expose one.
+func curatedModels(prov string) []string {
+	switch prov {
+	case "ollama":
+		return []string{"qwen2.5-coder:7b", "qwen2.5-coder:3b", "llama3.2:3b", "llama3.2:1b"}
+	case "groq":
+		return []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"}
+	case "openai":
+		return []string{"gpt-4o-mini", "gpt-4o", "gpt-5-mini"}
+	case "openai_compatible":
+		return []string{"qwen2.5-coder:7b", "gpt-4o-mini"}
+	case "anthropic":
+		return []string{"claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"}
+	case "gemini":
+		return []string{"gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"}
+	case "openrouter":
+		return []string{"openrouter/free", "aimlapi/qwen2.5-coder-3b", "qwen/qwen-2.5-coder-7b-instruct"}
+	}
+	return []string{"openrouter/free"}
+}
+
+// pickModel applies a selection from the /models or /config model picker.
+func pickModel(m *model, opt string) tea.Cmd {
+	if opt == "" || strings.HasPrefix(opt, "──") {
+		return nil
+	}
+	model := strings.TrimSpace(opt)
+	prov := m.agent.ProviderName()
+	m.applyModel(model)
+	if err := m.cfg.Save(); err != nil {
+		m.addItem("assistant", "Model set, but saving config failed: "+err.Error())
+	}
+	m.addItem("assistant", "Using model "+model)
+
+	// Offer to pull it if it's a local model we don't have yet.
+	if prov == "ollama" {
+		if local, err := provider.NewOllama(m.cfg).ListModels(m.agentCtx()); err == nil && !containsString(local, model) {
+			m.addItem("assistant", "Model "+model+" isn't pulled yet. Use `ollama pull "+model+"` once.")
+		}
+	}
+	return nil
+}
+
+func (m *model) agentCtx() context.Context { return context.Background() }
+
+func containsString(list []string, s string) bool {
+	for _, it := range list {
+		if it == s {
+			return true
+		}
+	}
+	return false
+}
+
+// providerPicker opens the inline menu for choosing a provider.
+func (m *model) providerPicker() {
+	m.picker = &pickerState{
+		title:   "Choose a provider",
+		options: []string{"ollama", "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter", "── Cancel ──"},
+		onPick: func(m *model, opt string) tea.Cmd {
+			if strings.HasPrefix(opt, "──") {
+				return nil
+			}
+			return m.switchProvider(opt)
+		},
+	}
+	m.viewport.GotoBottom()
 }
 
 func (m *model) View() string {
@@ -312,17 +498,21 @@ func (m *model) View() string {
 	m.viewport.SetContent(content)
 	view := m.viewport.View()
 
+	header := ""
+	if m.width > 0 {
+		header = headerStyle.Render(" GoDucky ") + " " + chipStyle.Render(m.provider) + " " + chipStyle.Render(m.modelName) + "\n"
+	}
 	statusLine := ""
 	if m.status != "" {
 		statusLine = statusStyle.Render(m.status) + "\n"
 	}
 	inputView := ""
-	if !m.running {
+	if !m.running && m.picker == nil {
 		inputView = m.input.View()
-	} else {
+	} else if m.picker == nil {
 		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("GoDucky is working... (Ctrl+C to quit)")
 	}
-	return view + "\n" + statusLine + inputView
+	return header + view + "\n" + statusLine + inputView
 }
 
 // runAgent starts the agent in a returned tea.Cmd (runs in its own goroutine).
@@ -358,8 +548,8 @@ func approvalLabel(desc string, args map[string]any) string {
 		parts := make([]string, 0, len(args))
 		for k, v := range args {
 			vs := fmt.Sprintf("%v", v)
-			if len(vs) > 60 {
-				vs = vs[:60] + "..."
+			if len([]rune(vs)) > 60 {
+				vs = truncRunes(vs, 60)
 			}
 			parts = append(parts, k+"="+vs)
 		}
@@ -390,20 +580,19 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 		return m.configCmd(arg)
 	case "/model":
 		if arg != "" {
-			m.agent.SetModel(arg)
-			m.modelName = arg
-			m.cfg.Model = arg
+			m.applyModel(arg)
 			_ = m.cfg.Save()
 			m.addItem("assistant", "Set model to "+arg+" on provider "+m.agent.ProviderName())
 		} else {
-			m.addItem("assistant", "Current: "+m.agent.ProviderName()+" / "+m.agent.ModelName()+
-				"\nUse /model <name> to change, or /providers to see options.")
+			return m.openModelsPicker()
 		}
+	case "/models":
+		return m.openModelsPicker()
 	case "/providers", "/provider", "/use":
 		if arg != "" {
 			return m.switchProvider(arg)
 		}
-		m.addItem("assistant", providersHelp(m.cfg))
+		m.providerPicker()
 	case "/login":
 		m.addItem("assistant",
 			"To add a cloud API key, quit and run:\n  goducky --login openrouter\n  goducky --login groq\n  goducky --login openai\n  goducky --login anthropic\n  goducky --login gemini\nThen start goducky again. Groq has a free tier.")
@@ -474,6 +663,13 @@ func (m *model) configCmd(arg string) tea.Cmd {
 	key = strings.ToLower(strings.TrimSpace(key))
 	val = strings.TrimSpace(val)
 	if val == "" {
+		switch key {
+		case "provider":
+			m.providerPicker()
+			return nil
+		case "model":
+			return m.openModelsPicker()
+		}
 		m.addItem("assistant", configHelp(m.cfg))
 		return nil
 	}
@@ -485,12 +681,10 @@ func (m *model) configCmd(arg string) tea.Cmd {
 	case "provider":
 		return m.switchProvider(val)
 	case "model":
-		m.agent.SetModel(val)
-		m.modelName = val
-	case "ollama.host":
+		m.applyModel(val)
+	case "host", "ollama.host":
 		if m.agent.ProviderName() == "ollama" {
-			p, err := provider.New(m.cfg, m.auth)
-			if err == nil {
+			if p, err := provider.New(m.cfg, m.auth); err == nil {
 				m.agent.SetProvider(p)
 			}
 		}
@@ -503,53 +697,79 @@ func (m *model) configCmd(arg string) tea.Cmd {
 	return nil
 }
 
+// applyModel sets the model everywhere: the active agent and the active
+// provider's config block, so it survives a restart.
+func (m *model) applyModel(model string) {
+	m.agent.SetModel(model)
+	m.modelName = model
+	m.cfg.Model = model
+	switch m.agent.ProviderName() {
+	case "ollama":
+		m.cfg.Ollama.Model = model
+	case "groq":
+		m.cfg.Groq.Model = model
+	case "openai", "openai_compatible":
+		m.cfg.OpenAI.Model = model
+	case "openrouter":
+		m.cfg.OpenRouter.Model = model
+	case "anthropic":
+		m.cfg.Anthropic.Model = model
+	case "gemini":
+		m.cfg.Gemini.Model = model
+	}
+}
+
 func configHelp(cfg *config.Config) string {
 	sb := &strings.Builder{}
-	sb.WriteString("Current config:\n")
+	sb.WriteString("Current settings (saved to config.json):\n")
 	fmt.Fprintf(sb, "  provider            : %s\n", cfg.Provider)
 	fmt.Fprintf(sb, "  model               : %s\n", cfg.Model)
-	fmt.Fprintf(sb, "  ollama.host         : %s\n", cfg.Ollama.Host)
-	fmt.Fprintf(sb, "  ollama.model        : %s\n", cfg.Ollama.Model)
-	fmt.Fprintf(sb, "  groq.model          : %s\n", cfg.Groq.Model)
-	fmt.Fprintf(sb, "  openai.base_url     : %s\n", cfg.OpenAI.BaseURL)
-	fmt.Fprintf(sb, "  openai.model        : %s\n", cfg.OpenAI.Model)
-	fmt.Fprintf(sb, "  openrouter.base_url : %s\n", cfg.OpenRouter.BaseURL)
-	fmt.Fprintf(sb, "  openrouter.model    : %s\n", cfg.OpenRouter.Model)
-	fmt.Fprintf(sb, "  anthropic.model     : %s\n", cfg.Anthropic.Model)
-	fmt.Fprintf(sb, "  gemini.model        : %s\n", cfg.Gemini.Model)
-	fmt.Fprintf(sb, "  agent.auto_approve  : %t\n", cfg.Agent.AutoApprove)
-	fmt.Fprintf(sb, "  agent.max_iterations: %d\n", cfg.Agent.MaxIterations)
-	fmt.Fprintf(sb, "  agent.max_output_chars: %d\n", cfg.Agent.MaxOutputChars)
-	fmt.Fprintf(sb, "  agent.exclude_dirs  : %s\n", strings.Join(cfg.Agent.ExcludeDirs, ", "))
-	sb.WriteString("\nEdit keys, for example:\n")
-	sb.WriteString("  /config provider ollama\n")
-	sb.WriteString("  /config model qwen2.5-coder:7b\n")
-	sb.WriteString("  /config ollama.host http://localhost:11434\n")
-	sb.WriteString("  /config openrouter.model qwen/qwen3-coder:free\n")
-	sb.WriteString("  /config agent.auto_approve true\n")
-	sb.WriteString("  /config agent.exclude_dirs .git,node_modules\n")
-	sb.WriteString("\nValues are saved to config.json and picked up on the next run.")
+	fmt.Fprintf(sb, "  local Ollama        : %s (%s)\n", cfg.Ollama.Host, cfg.Ollama.Model)
+	fmt.Fprintf(sb, "  groq                : %s\n", cfg.Groq.Model)
+	fmt.Fprintf(sb, "  openai              : %s (%s)\n", cfg.OpenAI.Model, cfg.OpenAI.BaseURL)
+	fmt.Fprintf(sb, "  openrouter          : %s\n", cfg.OpenRouter.Model)
+	fmt.Fprintf(sb, "  anthropic           : %s\n", cfg.Anthropic.Model)
+	fmt.Fprintf(sb, "  gemini              : %s\n", cfg.Gemini.Model)
+	fmt.Fprintf(sb, "  auto-approve tools  : %s\n", onOff(cfg.Agent.AutoApprove))
+	fmt.Fprintf(sb, "  max iterations      : %d\n", cfg.Agent.MaxIterations)
+	fmt.Fprintf(sb, "  max output chars    : %d\n", cfg.Agent.MaxOutputChars)
+	fmt.Fprintf(sb, "  exclude dirs        : %s\n", strings.Join(cfg.Agent.ExcludeDirs, ", "))
+	sb.WriteString("\nEasy examples:\n")
+	sb.WriteString("  /config model <name>          pick a model (or just /config model)\n")
+	sb.WriteString("  /config provider              choose a provider interactively\n")
+	sb.WriteString("  /config host http://localhost:11434\n")
+	sb.WriteString("  /config auto-approve on       skip permission prompts\n")
+	sb.WriteString("  /config iterations 50\n")
+	sb.WriteString("  /config exclude .git,dist\n")
+	sb.WriteString("  /config openrouter.model <id>  any dotted key works too\n")
 	return sb.String()
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 func helpText() string {
 	return `Commands:
   /help            Show this help
-  /config          View or edit configuration keys
-  /provider <name> Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)
+  /models          Pick a model for the current provider
+  /config          View or edit configuration (aliases: host, auto-approve, iterations, output)
   /model <name>    Set the model for the current provider
-  /providers       List providers and switch
+  /provider        Choose a provider interactively (or: /provider <name>)
   /login           How to add a cloud API key
   /clear           Clear the conversation
   /exit            Quit GoDucky
 
 Controls:
   Enter            Send / run command
-  Ctrl+C           Quit
+  Ctrl+C / Ctrl+X  Quit
   PageUp/PageDown  Scroll
-  ↑/↓              Input history
+  Mouse wheel      Scroll
+  Arrow/WASD       Navigate menus (Enter picks, Esc cancels)
 `
-
 }
 
 func (m *model) toProviderMessages() []provider.Message {
@@ -570,8 +790,20 @@ func (m *model) toProviderMessages() []provider.Message {
 
 func truncate(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "\n...[truncated]"
+	return string(r[:n]) + "\n...[truncated]"
+}
+
+// truncRunes cuts a string to n runes without splitting a multi-byte character,
+// which matters for Czech, Polish, Spanish and other non-ASCII text.
+func truncRunes(s string, n int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "..."
 }

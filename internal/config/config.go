@@ -89,7 +89,7 @@ func Default() *Config {
 		},
 		OpenRouter: OpenAIConfig{
 			BaseURL: "https://openrouter.ai/api/v1",
-			Model:   "qwen/qwen3-coder:free",
+			Model:   "openrouter/free",
 			EnvKey:  "OPENROUTER_API_KEY",
 		},
 		Anthropic: AnthropicConfig{
@@ -202,7 +202,16 @@ func ValidProvider(name string) bool {
 }
 
 // Set applies a dotted config key (e.g. "ollama.host", "agent.auto_approve")
-// with an untyped string value, as typed into the /config command.
+// with an untyped string value, as typed into the /config command. A few
+// human-friendly aliases are accepted for the keys normal users touch most:
+//
+//	host             → ollama.host
+//	autoapprove      → agent.auto_approve (accepts on/off/yes/no)
+//	auto-approve     → agent.auto_approve
+//	approve          → agent.auto_approve
+//	iterations       → agent.max_iterations
+//	output           → agent.max_output_chars
+//	exclude/excludes → agent.exclude_dirs
 func (c *Config) Set(key, value string) error {
 	switch key {
 	case "provider":
@@ -215,7 +224,7 @@ func (c *Config) Set(key, value string) error {
 			return errors.New("model cannot be empty")
 		}
 		c.Model = value
-	case "ollama.host":
+	case "host", "ollama.host":
 		c.Ollama.Host = value
 	case "ollama.model":
 		c.Ollama.Model = value
@@ -233,25 +242,25 @@ func (c *Config) Set(key, value string) error {
 		c.Anthropic.Model = value
 	case "gemini.model":
 		c.Gemini.Model = value
-	case "agent.auto_approve":
-		b, err := strconv.ParseBool(value)
+	case "agent.auto_approve", "autoapprove", "auto-approve", "approve":
+		b, err := parseBool(value)
 		if err != nil {
-			return fmt.Errorf("agent.auto_approve expects true/false, got %q", value)
+			return fmt.Errorf("%s expects on/off or true/false, got %q", key, value)
 		}
 		c.Agent.AutoApprove = b
-	case "agent.max_iterations":
+	case "agent.max_iterations", "iterations":
 		n, err := strconv.Atoi(value)
 		if err != nil || n < 1 {
-			return fmt.Errorf("agent.max_iterations expects a positive integer, got %q", value)
+			return fmt.Errorf("iterations expects a positive integer, got %q", value)
 		}
 		c.Agent.MaxIterations = n
-	case "agent.max_output_chars":
+	case "agent.max_output_chars", "output":
 		n, err := strconv.Atoi(value)
 		if err != nil || n < 1 {
-			return fmt.Errorf("agent.max_output_chars expects a positive integer, got %q", value)
+			return fmt.Errorf("output expects a positive integer, got %q", value)
 		}
 		c.Agent.MaxOutputChars = n
-	case "agent.exclude_dirs":
+	case "agent.exclude_dirs", "exclude", "excludes":
 		parts := strings.Split(value, ",")
 		dirs := make([]string, 0, len(parts))
 		for _, p := range parts {
@@ -266,13 +275,24 @@ func (c *Config) Set(key, value string) error {
 	return nil
 }
 
+// parseBool accepts on/off/yes/no as well as strconv.ParseBool values.
+func parseBool(s string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "on", "yes", "y", "true", "1":
+		return true, nil
+	case "off", "no", "n", "false", "0":
+		return false, nil
+	}
+	return strconv.ParseBool(s)
+}
+
 // Auth holds API keys, kept separate from config so they aren't committed.
 type Auth struct {
-	GroqAPIKey        string `json:"groq_api_key"`
-	OpenAIAPIKey      string `json:"openai_api_key"`
-	OpenRouterAPIKey  string `json:"openrouter_api_key"`
-	AnthropicAPIKey   string `json:"anthropic_api_key"`
-	GeminiAPIKey      string `json:"gemini_api_key"`
+	GroqAPIKey       string `json:"groq_api_key"`
+	OpenAIAPIKey     string `json:"openai_api_key"`
+	OpenRouterAPIKey string `json:"openrouter_api_key"`
+	AnthropicAPIKey  string `json:"anthropic_api_key"`
+	GeminiAPIKey     string `json:"gemini_api_key"`
 }
 
 // LoadAuth reads the auth file, returning zero-value if absent.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -47,6 +48,10 @@ func run() error {
 
 	if len(flag.Args()) > 0 && flag.Args()[0] == "completion" {
 		return completionCmd(flag.Args()[1:])
+	}
+
+	if len(flag.Args()) > 0 && flag.Args()[0] == "update" {
+		return updateCmd(flag.Args()[1:])
 	}
 
 	if *apiKeyCmd != "" {
@@ -103,13 +108,17 @@ func run() error {
 
 	// Run first-time onboarding wizard unless a provider was explicitly chosen.
 	if !cfg.Onboarded && *providerFlag == "" && *uniquePrompt == "" {
-		if _, _, finished, oerr := setup.Onboard(cfg); finished {
+		_, _, finished, oerr := setup.Onboard(cfg)
+		if errors.Is(oerr, setup.ErrQuit) {
+			os.Exit(0)
+		}
+		if finished {
 			cfg.Onboarded = true
-			_ = oerr
 		} else {
 			// Even if setup was skipped, don't nag on every run.
 			cfg.Onboarded = true
 		}
+		_ = oerr
 		_ = cfg.Save()
 		auth, err = config.LoadAuth()
 		if err != nil {
@@ -183,15 +192,11 @@ func (p *printCallback) OnStatus(msg string)                              {}
 func (p *printCallback) OnComplete(response string, usage provider.Usage) {}
 
 func saveAPIKey(providerName string) error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
+	switch providerName {
+	case "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter":
+	default:
+		return fmt.Errorf("unknown provider %q for login", providerName)
 	}
-	auth, err := config.LoadAuth()
-	if err != nil {
-		return err
-	}
-	_ = cfg
 
 	fmt.Fprintf(os.Stderr, "Enter API key for %s: ", providerName)
 	var key string
@@ -199,6 +204,18 @@ func saveAPIKey(providerName string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return fmt.Errorf("no key entered")
+	}
+
+	if err := provider.ValidateAPIKey(providerName, key); err != nil {
+		if strings.Contains(err.Error(), "rejected") {
+			return fmt.Errorf("key not saved: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "warning: could not verify the key (no internet?), saving anyway: %v\n", err)
+	}
+
+	auth, err := config.LoadAuth()
+	if err != nil {
+		return err
 	}
 	switch providerName {
 	case "groq":
@@ -211,13 +228,17 @@ func saveAPIKey(providerName string) error {
 		auth.GeminiAPIKey = key
 	case "openrouter":
 		auth.OpenRouterAPIKey = key
-	default:
-		return fmt.Errorf("unknown provider %q for login", providerName)
 	}
 	if err := auth.Save(); err != nil {
 		return err
 	}
-	fmt.Printf("Saved API key for %s.\n", providerName)
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	cfg.Provider = providerName
+	_ = cfg.Save()
+	fmt.Printf("Saved and verified API key for %s. Start GoDucky to chat.\n", providerName)
 	return nil
 }
 

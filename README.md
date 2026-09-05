@@ -64,9 +64,11 @@ values.
 
 ## Quick start
 
-Run `goducky` in any directory. The first run walks you through setup: it can install
-Ollama and pull a local model (`qwen2.5-coder`) for you, or you can plug in a cloud API
-key. Groq is a good free starting point.
+Run `goducky` in any directory. The first run walks you through setup with simple
+menus (arrow keys / WASD): it can install Ollama and pull a local model for you.
+A list of recommended models is grouped by family (Qwen, Starcoder, Deepseek,
+Codegemma, Llama) — pick one and it's pulled automatically — or you can plug in a
+cloud API key. Groq is a good free starting point.
 
 ```bash
 goducky                                                  # interactive TUI (default: local Ollama)
@@ -98,13 +100,11 @@ goducky --login openrouter  # many models in one place, incl. free ones
 goducky --provider openrouter
 ```
 
-OpenRouter defaults to a **free coding model** (`qwen/qwen3-coder:free`) — no credit
-card needed for the `:free` variants. If a specific free model ever gets pulled off
-the roster, use `openrouter/free` (OpenRouter's auto-router, always resolves):
-
-```bash
-goducky --provider openrouter --model openrouter/free
-```
+OpenRouter defaults to `openrouter/free`, a special model id that routes to **any
+currently-free model** — so `goducky --provider openrouter` keeps working even as
+individual free models rotate in and out. Use `/models` inside the TUI (or
+`goducky --models --provider openrouter`) to see the live list of what's free
+right now.
 
 ```bash
 goducky --login openai
@@ -142,20 +142,9 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
   "model": "qwen2.5-coder:7b",
   "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:7b" },
   "groq": { "model": "llama-3.3-70b-versatile" },
-  "openrouter": {
-    "base_url": "https://openrouter.ai/api/v1",
-    "model": "qwen/qwen3-coder:free",
-    "env_key": "OPENROUTER_API_KEY"
-  },
-  "openai": {
-    "base_url": "https://api.openai.com/v1",
-    "model": "gpt-4o",
-    "env_key": "OPENAI_API_KEY"
-  },
-  "anthropic": {
-    "model": "claude-3-5-sonnet-latest",
-    "env_key": "ANTHROPIC_API_KEY"
-  },
+  "openrouter": { "base_url": "https://openrouter.ai/api/v1", "model": "openrouter/free", "env_key": "OPENROUTER_API_KEY" },
+  "openai": { "base_url": "https://api.openai.com/v1", "model": "gpt-4o", "env_key": "OPENAI_API_KEY" },
+  "anthropic": { "model": "claude-3-5-sonnet-latest", "env_key": "ANTHROPIC_API_KEY" },
   "gemini": { "model": "gemini-1.5-pro", "env_key": "GEMINI_API_KEY" },
   "agent": { "auto_approve": false }
 }
@@ -167,20 +156,36 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
 
 ```
 /help           Show help
-/config         View or edit configuration keys
-/provider <n>   Switch provider (ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)
-/providers      List providers
+/models         Pick a model for the current provider (live list for Ollama / Groq / OpenRouter)
+/config         View or edit configuration
+/provider       Choose a provider interactively (or: /provider <name>)
 /model <name>   Set the model for the current provider
 /login          How to add a cloud API key
 /clear          Clear the conversation
 /exit           Quit
 ```
 
+Menus (like `/models`, `/provider`) are navigated with **arrow keys or WASD**:
+Enter picks, Esc cancels. `Ctrl+C` or `Ctrl+X` quits. Mouse wheel scrolls the
+transcript.
+
 You can also edit config from inside the TUI without touching the file:
 `/config` shows the current values, and `/config <key> <value>` saves a change.
-Keys are the dotted JSON paths, e.g. `provider`, `ollama.host`,
-`openrouter.model`, or `agent.auto_approve`. Provider and model changes are
-applied immediately; everything else is picked up on the next run.
+Keys are the dotted JSON paths (`provider`, `ollama.host`, `openrouter.model`,
+`agent.auto_approve`), with friendly aliases for the common ones:
+`host`, `auto-approve` (on/off), `iterations`, `output`, `exclude`. Provider and
+model changes apply immediately; everything else is picked up on the next run.
+
+### Updating
+
+```
+goducky update              # update to the newest release
+goducky update v1.0.0       # update to a specific release tag
+```
+
+The updater downloads the matching binary for your OS/CPU from GitHub Releases,
+verifies its SHA-256 checksum, and replaces the current executable. On Windows
+the running binary is renamed aside first, so you can update from within the app.
 
 ### Flags
 
@@ -197,6 +202,7 @@ goducky
   -dir string        Working directory (default: current)
   -version           Print version and exit
   completion <shell> Print a tab-completion script (bash, zsh, fish, powershell)
+  update [tag]       Self-update to the latest release (or a specific tag)
 ```
 
 ### Permissions

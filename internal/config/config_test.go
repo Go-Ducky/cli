@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
@@ -20,8 +19,8 @@ func TestDefaults(t *testing.T) {
 	if c.OpenRouter.EnvKey != "OPENROUTER_API_KEY" {
 		t.Fatalf("default openrouter env key mismatch: %q", c.OpenRouter.EnvKey)
 	}
-	if !strings.HasSuffix(c.OpenRouter.Model, ":free") {
-		t.Fatalf("default openrouter model should be a free model, got %q", c.OpenRouter.Model)
+	if c.OpenRouter.Model != "openrouter/free" {
+		t.Fatalf("default openrouter model should be openrouter/free, got %q", c.OpenRouter.Model)
 	}
 	if c.Agent.MaxIterations == 0 {
 		t.Fatal("default max iterations should be non-zero")
@@ -112,6 +111,28 @@ func TestSet(t *testing.T) {
 
 	if err := c.Set("agent.exclude_dirs", ".git, node_modules"); err != nil || len(c.Agent.ExcludeDirs) != 2 || c.Agent.ExcludeDirs[1] != "node_modules" {
 		t.Fatalf("set agent.exclude_dirs: %v (dirs=%v)", err, c.Agent.ExcludeDirs)
+	}
+
+	if err := c.Set("host", "http://10.0.0.5:11434"); err != nil || c.Ollama.Host != "http://10.0.0.5:11434" {
+		t.Fatalf("alias host: %v (host=%q)", err, c.Ollama.Host)
+	}
+	if err := c.Set("auto-approve", "on"); err != nil || !c.Agent.AutoApprove {
+		t.Fatalf("alias auto-approve on: %v", err)
+	}
+	if err := c.Set("autoapprove", "off"); err != nil || c.Agent.AutoApprove {
+		t.Fatalf("alias autoapprove off: %v", err)
+	}
+	if err := c.Set("approve", "yes"); err != nil || !c.Agent.AutoApprove {
+		t.Fatalf("alias approve yes: %v", err)
+	}
+	if err := c.Set("iterations", "7"); err != nil || c.Agent.MaxIterations != 7 {
+		t.Fatalf("alias iterations: %v (iter=%d)", err, c.Agent.MaxIterations)
+	}
+	if err := c.Set("output", "4096"); err != nil || c.Agent.MaxOutputChars != 4096 {
+		t.Fatalf("alias output: %v (out=%d)", err, c.Agent.MaxOutputChars)
+	}
+	if err := c.Set("exclude", "a,b"); err != nil || len(c.Agent.ExcludeDirs) != 2 {
+		t.Fatalf("alias exclude: %v (dirs=%v)", err, c.Agent.ExcludeDirs)
 	}
 
 	if err := c.Set("nope.nothing", "x"); err == nil {
