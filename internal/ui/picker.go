@@ -27,13 +27,18 @@ func RunSelect(title string, options []string) (int, bool, error) {
 
 	selected := 0
 	lastLines := 0
+	w, _, _ := term.GetSize(os.Stdin.Fd())
+	if w < 40 {
+		w = 80
+	}
+
 	render := func() {
 		s := menuView(title, options, selected)
 		if lastLines > 0 {
 			fmt.Printf("\x1b[%dA\x1b[J", lastLines)
 		}
 		fmt.Print(s)
-		lastLines = len(strings.Split(s, "\n"))
+		lastLines = screenLines(s, w)
 	}
 	render()
 	for {
@@ -85,6 +90,23 @@ func menuView(title string, options []string, selected int) string {
 	}
 	sb.WriteString("\n" + dimStyle.Render("↑/↓ or W/S to move · Enter to pick · Esc to cancel"))
 	return sb.String()
+}
+
+func screenLines(s string, width int) int {
+	count := 0
+	for _, line := range strings.Split(s, "\n") {
+		w := runewidthNoAnsi(line)
+		if w == 0 {
+			count++
+		} else {
+			count += (w + width - 1) / width
+		}
+	}
+	return count
+}
+
+func runewidthNoAnsi(s string) int {
+	return lipgloss.Width(s)
 }
 
 func isTerminal() bool {

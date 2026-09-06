@@ -638,22 +638,6 @@ func (m *model) renderBody() string {
 	if m.current != "" {
 		sb.WriteString("\n" + assistantStyle.Render(m.assistantName()+":") + "\n" + wrapText(m.current, w))
 	}
-	if m.picker != nil {
-		sb.WriteString("\n\n" + highlightStyle.Render(wrapText(m.picker.title, w)) + "\n")
-		start, end := pickerWindow(m.picker, 14)
-		for i := start; i < end; i++ {
-			if i == m.picker.selected {
-				sb.WriteString(highlightStyle.Render("❯ "+m.picker.options[i]) + "\n")
-			} else {
-				sb.WriteString("  " + m.picker.options[i] + "\n")
-			}
-		}
-		if len(m.picker.options) > end-start {
-			sb.WriteString(dimStyle.Render(fmt.Sprintf("  ─ showing %d–%d of %d ─", start+1, end, len(m.picker.options))))
-			sb.WriteString("\n")
-		}
-		sb.WriteString(dimStyle.Render("↑/↓ or W/S to move · Enter to pick · Esc to cancel"))
-	}
 	return sb.String()
 }
 
@@ -682,20 +666,6 @@ func (m *model) plainBodyLines(w int) []string {
 	}
 	if m.current != "" {
 		add("\n" + m.assistantName() + ":\n" + wrapText(m.current, w))
-	}
-	if m.picker != nil {
-		add("\n\n" + wrapText(m.picker.title, w))
-		start, end := pickerWindow(m.picker, 14)
-		for i := start; i < end; i++ {
-			if i == m.picker.selected {
-				add("\n❯ " + m.picker.options[i])
-			} else {
-				add("\n  " + m.picker.options[i])
-			}
-		}
-		if len(m.picker.options) > end-start {
-			add(fmt.Sprintf("\n  ─ showing %d–%d of %d ─", start+1, end, len(m.picker.options)))
-		}
 	}
 	return lines
 }
@@ -1312,7 +1282,52 @@ func copyToClipboard(text string) string {
 	return "terminal clipboard"
 }
 
+func (m *model) pickerOverlay() string {
+	n := len(m.picker.options)
+	if n == 0 {
+		return dimStyle.Render("No options.")
+	}
+	boxW := m.width - 6
+	if boxW > 68 {
+		boxW = 68
+	}
+	if boxW < 30 {
+		boxW = 30
+	}
+	start, end := pickerWindow(m.picker, boxW-2)
+	sel := m.picker.selected
+	title := truncateWidth(m.picker.title, boxW-4)
+	pad := lipgloss.NewStyle().Width(boxW - 2).MaxHeight(1)
+	top := "╭" + strings.Repeat("─", boxW-2) + "╮"
+	bottom := "╰" + strings.Repeat("─", boxW-2) + "╯"
+	var sb strings.Builder
+	sb.WriteString("  " + top + "\n")
+	sb.WriteString("  " + pad.Render("  "+title) + "\n")
+	sb.WriteString("  " + pad.Render(strings.Repeat("─", boxW-2)) + "\n")
+	if n > end-start {
+		sb.WriteString("  " + dimStyle.Render(fmt.Sprintf("   %d–%d of %d", start+1, end, n)) + "\n")
+	}
+	for i := start; i < end; i++ {
+		opt := m.picker.options[i]
+		if strings.HasPrefix(opt, "──") {
+			sb.WriteString("  " + pad.Render(strings.Repeat("─", boxW-2)) + "\n")
+			continue
+		}
+		if i == sel {
+			sb.WriteString("  " + pad.Render("❯ "+highlightStyle.Render(opt)) + "\n")
+		} else {
+			sb.WriteString("  " + pad.Render("  "+opt) + "\n")
+		}
+	}
+	sb.WriteString("  " + bottom + "\n")
+	sb.WriteString("  " + dimStyle.Render("↑/↓ or W/S move · Enter pick · Esc close"))
+	return sb.String()
+}
+
 func (m *model) View() string {
+	if m.picker != nil {
+		return m.pickerOverlay()
+	}
 	body := m.renderBody()
 	content := body
 	m.viewport.SetContent(content)
@@ -1346,9 +1361,9 @@ func (m *model) View() string {
 			masked = "paste API key…"
 		}
 		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("🔑 " + masked)
-	} else if !m.running && m.picker == nil {
+	} else if !m.running {
 		inputView = m.input.View()
-	} else if m.picker == nil {
+	} else {
 		inputView = lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render("GoDucky is working... (Esc to stop · Ctrl+X to quit)")
 	}
 	return header + view + "\n" + statusLine + inputView
