@@ -1217,6 +1217,9 @@ func copyToClipboard(text string) string {
 	var candidates [][]string
 	switch runtime.GOOS {
 	case "windows":
+		if err := winCopyToClipboard(text); err == nil {
+			return "Windows clipboard"
+		}
 		candidates = [][]string{{"clip"}}
 	case "darwin":
 		candidates = [][]string{{"pbcopy"}}
