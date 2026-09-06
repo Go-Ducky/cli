@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -383,6 +384,21 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(cmds...)
 		}
+		if prov, ok := loginShellCmd(msg.text); ok {
+			m.addItem("user", msg.text)
+			if prov != "" {
+				m.addItem("assistant",
+					"That command runs in your terminal, not in GoDucky. Doing the same thing here: /login "+prov)
+				m.viewport.SetContent(m.renderBody())
+				m.viewport.GotoBottom()
+				return m, m.switchProvider(prov)
+			}
+			m.addItem("assistant",
+				"That command runs in your terminal, not in GoDucky. Use /login <provider> right here (or run `goducky --login <provider>` in your shell).")
+			m.viewport.SetContent(m.renderBody())
+			m.viewport.GotoBottom()
+			return m, nil
+		}
 		m.addItem("user", msg.text)
 		m.current = ""
 		m.running = true
@@ -418,7 +434,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.cancelled {
 			return m.finishStopped(), textarea.Blink
 		}
-		m.addItem("assistant", "❌ "+msg.err.Error())
+		m.addItem("assistant", "❌ "+friendlyAgentErr(msg.err))
 		m.running = false
 		m.status = ""
 		m.input.Focus()
@@ -1561,8 +1577,16 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 		}
 		m.providerPicker()
 	case "/login":
+		if arg != "" {
+			name := strings.ToLower(strings.TrimSpace(arg))
+			if isCloudProvider(name) || name == "ollama" {
+				return m.switchProvider(name)
+			}
+			m.addItem("assistant", "Unknown provider "+name+". Try one of:\n  /login groq\n  /login openrouter\n  /login openai\n  /login opencode\n  /login anthropic\n  /login gemini")
+			return nil
+		}
 		m.addItem("assistant",
-			"To add a cloud API key, just type:\n  /provider openrouter\n  /provider groq\n  /provider openai\n  /provider opencode\n  /provider anthropic\n  /provider gemini\nGoDucky prompts you to paste the key, verifies it live, saves it, and switches.\nYou can also save one without the chat: run `goducky --login openrouter`.")
+			"To add a cloud API key, just type:\n  /login groq\n  /login openrouter\n  /login openai\n  /login opencode\n  /login anthropic\n  /login gemini\nGoDucky prompts you to paste the key, verifies it live, saves it, and switches.\nYou can also save one without the chat: run `goducky --login <provider>`.")
 	case "/save":
 		name := strings.TrimSpace(arg)
 		if name == "" {
@@ -1878,14 +1902,13 @@ func helpText() string {
   /settings        Alias for /config
   /model <name>    Set the model (auto-pulls it for local Ollama)
   /provider        Choose a provider interactively (or: /provider <name>)
-  /login           How to add a cloud API key
+  /login <name>    Set an API key for a provider (or /login for how-to)
   /pull <name>     Pull a model through Ollama (e.g. /pull qwen2.5-coder:7b)
   /rm <name>       Remove a local Ollama model
   /save <name>     Save this chat so you can resume it later
   /rename <name>   Rename the current chat
   /sessions        List saved chats (resume with goducky resume <n>)
   /github          Open the GoDucky repo in your browser
-  /login           How to add a cloud API key
   /clear           Clear the conversation
   /exit            Quit GoDucky
 
@@ -1922,6 +1945,63 @@ func (m *model) toProviderMessages() []provider.Message {
 		}
 	}
 	return out
+}
+
+func loginShellCmd(s string) (string, bool) {
+	parts := strings.Fields(strings.TrimSpace(s))
+	if len(parts) == 0 || strings.ToLower(parts[0]) != "goducky" {
+		return "", false
+	}
+	for i := 1; i < len(parts); i++ {
+		p := parts[i]
+		if p == "--login" || p == "-l" || p == "login" {
+			if i+1 < len(parts) {
+				name := strings.ToLower(parts[i+1])
+				if name == "ollama" || isCloudProvider(name) {
+					return name, true
+				}
+			}
+			return "", true
+		}
+	}
+	return "", false
+}
+
+func friendlyAgentErr(err error) string {
+	if err == nil {
+		return "unknown error"
+	}
+	s := strings.TrimSpace(err.Error())
+	low := strings.ToLower(s)
+	if strings.Contains(low, "rate limit") || strings.Contains(low, "\"429\"") || strings.Contains(low, "429") {
+		hint := ""
+		if strings.Contains(low, "free") {
+			hint = " The free tier is momentarily busy."
+		}
+		return "Rate limit hit (429)." + hint + " Wait a moment and retry, or pick another model with /models."
+	}
+	trimmed := strings.TrimSuffix(trimJSONMessage(s), "\n")
+	if trimmed != "" {
+		return trimmed
+	}
+	return s
+}
+
+func trimJSONMessage(s string) string {
+	i := strings.Index(s, "{")
+	if i < 0 {
+		return s
+	}
+	msg := s[:i]
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s[i:]), &m); err != nil {
+		return s
+	}
+	inner, _ := m["message"].(string)
+	if inner != "" {
+		msg += inner
+	}
+	return strings.TrimSpace(msg)
 }
 
 func truncate(s string, n int) string {
