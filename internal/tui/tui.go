@@ -488,6 +488,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			title += " (live list failed, showing known models)"
 		}
+		if len(msg.models) > 8 {
+			title += fmt.Sprintf(" — %d models", len(msg.models))
+		}
 		m.picker = &pickerState{
 			title:   title,
 			options: fixed,
@@ -637,12 +640,17 @@ func (m *model) renderBody() string {
 	}
 	if m.picker != nil {
 		sb.WriteString("\n\n" + highlightStyle.Render(wrapText(m.picker.title, w)) + "\n")
-		for i, opt := range m.picker.options {
+		start, end := pickerWindow(m.picker, 14)
+		for i := start; i < end; i++ {
 			if i == m.picker.selected {
-				sb.WriteString(highlightStyle.Render("❯ "+opt) + "\n")
+				sb.WriteString(highlightStyle.Render("❯ "+m.picker.options[i]) + "\n")
 			} else {
-				sb.WriteString("  " + opt + "\n")
+				sb.WriteString("  " + m.picker.options[i] + "\n")
 			}
+		}
+		if len(m.picker.options) > end-start {
+			sb.WriteString(dimStyle.Render(fmt.Sprintf("  ─ showing %d–%d of %d ─", start+1, end, len(m.picker.options))))
+			sb.WriteString("\n")
 		}
 		sb.WriteString(dimStyle.Render("↑/↓ or W/S to move · Enter to pick · Esc to cancel"))
 	}
@@ -677,12 +685,16 @@ func (m *model) plainBodyLines(w int) []string {
 	}
 	if m.picker != nil {
 		add("\n\n" + wrapText(m.picker.title, w))
-		for i, opt := range m.picker.options {
+		start, end := pickerWindow(m.picker, 14)
+		for i := start; i < end; i++ {
 			if i == m.picker.selected {
-				add("\n❯ " + opt)
+				add("\n❯ " + m.picker.options[i])
 			} else {
-				add("\n  " + opt)
+				add("\n  " + m.picker.options[i])
 			}
+		}
+		if len(m.picker.options) > end-start {
+			add(fmt.Sprintf("\n  ─ showing %d–%d of %d ─", start+1, end, len(m.picker.options)))
 		}
 	}
 	return lines
@@ -930,7 +942,7 @@ func fetchModelsFor(prov string, cfg *config.Config, auth *config.Auth) ([]strin
 		return out, err
 	case "openrouter":
 		if free, err := provider.OpenRouterFreeModels(ctx, ""); err == nil && len(free) > 0 {
-			return free, nil
+			return openrouterList(free, curatedModels(prov)), nil
 		}
 		return curatedModels(prov), nil
 	case "groq":
@@ -952,26 +964,65 @@ func fetchModelsFor(prov string, cfg *config.Config, auth *config.Auth) ([]strin
 	return curatedModels(prov), nil
 }
 
+func pickerWindow(p *pickerState, size int) (start, end int) {
+	n := len(p.options)
+	if n <= size {
+		return 0, n
+	}
+	start = p.selected - size/2
+	if start < 0 {
+		start = 0
+	}
+	end = start + size
+	if end > n {
+		end = n
+		start = end - size
+		if start < 0 {
+			start = 0
+		}
+	}
+	return start, end
+}
+
 func curatedModels(prov string) []string {
 	switch prov {
 	case "ollama":
 		return setup.RecommendedModelIDs()
 	case "groq":
-		return []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"}
+		return []string{"llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama3-8b-8192"}
 	case "openai":
-		return []string{"gpt-4o-mini", "gpt-4o", "gpt-5-mini"}
+		return []string{"gpt-4o-mini", "gpt-5-mini", "gpt-4o", "gpt-5"}
 	case "openai_compatible":
-		return []string{"qwen2.5-coder:7b", "gpt-4o-mini"}
+		return []string{"gpt-4o-mini", "qwen2.5-coder:7b"}
 	case "anthropic":
-		return []string{"claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"}
+		return []string{"claude-3-7-sonnet-latest", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"}
 	case "gemini":
-		return []string{"gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"}
+		return []string{"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"}
 	case "openrouter":
 		return []string{"openrouter/free", "aimlapi/qwen2.5-coder-3b", "qwen/qwen-2.5-coder-7b-instruct"}
 	case "opencode":
 		return []string{"big-pickle", "deepseek-v4-flash", "minimax-m2.5", "qwen3.7-max", "gpt-5.2-codex"}
 	}
 	return []string{"openrouter/free"}
+}
+
+func openrouterList(free, preferred []string) []string {
+	seen := map[string]bool{}
+	out := []string{"openrouter/free"}
+	seen["openrouter/free"] = true
+	for _, m := range preferred {
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	for _, m := range free {
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func pickModel(m *model, opt string) tea.Cmd {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/Go-Ducky/cli/internal/config"
@@ -56,10 +57,13 @@ func OpenRouterFreeModels(ctx context.Context, apiKey string) ([]string, error) 
 		return nil, err
 	}
 	var free []string
+	seen := map[string]bool{}
 	for _, m := range out.Data {
-		if m.Pricing.Prompt == "0" || strings.HasSuffix(m.ID, ":free") || strings.Contains(m.ID, "free") {
+		if (m.Pricing.Prompt == "0" || strings.HasSuffix(m.ID, ":free") || strings.Contains(m.ID, "free")) && !seen[m.ID] {
+			seen[m.ID] = true
 			free = append(free, m.ID)
 		}
 	}
+	sort.Strings(free)
 	return free, nil
 }
