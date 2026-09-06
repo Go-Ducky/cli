@@ -97,6 +97,7 @@ type model struct {
 	picker          *pickerState
 	configPrompt    string
 	promptKeyFor    string
+	keyNoSwitch     bool
 	sessionName     string
 	history         []string
 	histCursor      int
@@ -232,6 +233,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.submitKeyPrompt()
 			case "esc":
 				m.promptKeyFor = ""
+				m.keyNoSwitch = false
 				m.input.Reset()
 				m.input.Placeholder = "Ask GoDucky... (Enter to send)"
 				m.addItem("assistant", "Cancelled — still on "+m.agent.ProviderName()+".")
@@ -320,6 +322,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selecting = true
 					p := selPos{row: row, col: col}
 					m.selStart, m.selEnd = &p, &p
+					m.viewport.SetContent(m.renderBody())
 				} else {
 					m.selecting = false
 					m.selStart, m.selEnd = nil, nil
@@ -329,6 +332,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selecting && msg.Action == tea.MouseActionMotion {
 				if row, col, ok := m.mouseToDoc(msg); ok {
 					m.selEnd = &selPos{row: row, col: col}
+					m.viewport.SetContent(m.renderBody())
 					return m, nil
 				}
 			}
@@ -419,6 +423,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case apiKeyMsg:
 		m.status = ""
 		m.promptKeyFor = ""
+		m.keyNoSwitch = false
 		m.input.Reset()
 		m.input.Placeholder = "Ask GoDucky... (Enter to send)"
 		if msg.err != nil {
@@ -433,8 +438,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.addItem("assistant", "API key for "+msg.provider+" saved (couldn't verify — offline?).")
 		}
+		m.addItem("assistant", "You can switch to it with /provider "+msg.provider)
 		m.viewport.SetContent(m.renderBody())
 		m.viewport.GotoBottom()
+		if msg.noSwitch {
+			return m, nil
+		}
 		return m, m.switchProvider(msg.provider)
 
 	case openErrMsg:
@@ -1023,6 +1032,56 @@ func (m *model) providerPicker() {
 	m.viewport.GotoBottom()
 }
 
+var cloudKeyProviders = []string{"groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter", "opencode"}
+
+func isCloudProvider(name string) bool {
+	for _, p := range cloudKeyProviders {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *model) apiKeyPicker() {
+	m.picker = &pickerState{
+		title:   "Set an API key — pick a provider (Esc to cancel)",
+		options: append(append([]string{}, cloudKeyProviders...), "── Cancel ──"),
+		onPick: func(m *model, opt string) tea.Cmd {
+			if strings.HasPrefix(opt, "──") {
+				return nil
+			}
+			return m.startKeyPrompt(opt)
+		},
+	}
+	m.viewport.GotoBottom()
+}
+
+func (m *model) startKeyPrompt(prov string) tea.Cmd {
+	m.promptKeyFor = prov
+	m.keyNoSwitch = true
+	m.input.Reset()
+	m.input.Placeholder = "paste API key…"
+	m.addItem("assistant",
+		"Paste a "+prov+" API key below and press Enter (Esc to cancel). "+
+			"It's verified live and saved — your current provider stays unchanged.")
+	m.input.Focus()
+	m.viewport.SetContent(m.renderBody())
+	m.viewport.GotoBottom()
+	return nil
+}
+
+func (m *model) keyState() string {
+	prov := m.agent.ProviderName()
+	if prov == "ollama" {
+		return "set one for a cloud provider"
+	}
+	if m.hasProviderKey(prov) {
+		return prov + " key set — replace"
+	}
+	return "set a key for " + prov
+}
+
 type copiedMsg struct{ method string }
 
 func (m *model) copyText() string {
@@ -1288,6 +1347,7 @@ type apiKeyMsg struct {
 	provider string
 	key      string
 	verified bool
+	noSwitch bool
 	err      error
 }
 
@@ -1302,21 +1362,22 @@ func (m *model) submitKeyPrompt() (tea.Model, tea.Cmd) {
 	m.viewport.SetContent(m.renderBody())
 	return m, func() tea.Msg {
 		verified := true
+		noSwitch := m.keyNoSwitch
 		if err := provider.ValidateAPIKey(prov, key); err != nil {
 			if strings.Contains(err.Error(), "rejected") {
-				return apiKeyMsg{provider: prov, key: key, err: err}
+				return apiKeyMsg{provider: prov, key: key, noSwitch: noSwitch, err: err}
 			}
 			verified = false
 		}
 		auth, err := config.LoadAuth()
 		if err != nil {
-			return apiKeyMsg{provider: prov, key: key, err: err}
+			return apiKeyMsg{provider: prov, key: key, noSwitch: noSwitch, err: err}
 		}
 		setAuthKey(auth, prov, key)
 		if err := auth.Save(); err != nil {
-			return apiKeyMsg{provider: prov, key: key, err: err}
+			return apiKeyMsg{provider: prov, key: key, noSwitch: noSwitch, err: err}
 		}
-		return apiKeyMsg{provider: prov, key: key, verified: verified}
+		return apiKeyMsg{provider: prov, key: key, verified: verified, noSwitch: noSwitch}
 	}
 }
 
@@ -1393,7 +1454,7 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 		m.addItem("assistant", helpText())
 	case "/exit", "/quit", "/q":
 		return tea.Quit
-	case "/config":
+	case "/config", "/settings":
 		return m.configCmd(arg)
 	case "/model":
 		if arg != "" {
@@ -1511,6 +1572,7 @@ func (m *model) switchProvider(name string) tea.Cmd {
 	if name != "ollama" && !m.hasProviderKey(name) {
 
 		m.promptKeyFor = name
+		m.keyNoSwitch = false
 		m.input.Reset()
 		m.input.Placeholder = "paste API key…"
 		m.addItem("assistant",
@@ -1570,9 +1632,20 @@ func (m *model) configCmd(arg string) tea.Cmd {
 			return nil
 		case "model":
 			return m.openModelsPicker()
+		case "api-key", "apikey", "key":
+			m.apiKeyPicker()
+			return nil
 		}
 		m.addItem("assistant", configHelp(m))
 		return nil
+	}
+	switch key {
+	case "api-key", "apikey", "key":
+		if !isCloudProvider(val) {
+			m.addItem("assistant", "Unknown provider: "+val+"\nValid: groq, openai, openai_compatible, anthropic, gemini, openrouter, opencode")
+			return nil
+		}
+		return m.startKeyPrompt(val)
 	}
 	if err := m.cfg.Set(key, val); err != nil {
 		m.addItem("assistant", "Error: "+err.Error())
@@ -1626,11 +1699,15 @@ func (m *model) configPicker() {
 			opt("Iterations", strconv.Itoa(m.cfg.Agent.MaxIterations)),
 			opt("Max output", strconv.Itoa(m.cfg.Agent.MaxOutputChars)),
 			opt("Excluded dirs", excludes),
+			opt("API key", m.keyState()),
 			"── Cancel ──",
 		},
 		onPick: func(m *model, opt string) tea.Cmd {
 			switch {
 			case strings.HasPrefix(opt, "──"):
+				return nil
+			case strings.HasPrefix(opt, "API key"):
+				m.apiKeyPicker()
 				return nil
 			case strings.HasPrefix(opt, "Provider"):
 				m.providerPicker()
@@ -1677,6 +1754,7 @@ func configHelp(m *model) string {
 	sb.WriteString("You are on " + prov + " with model " + model + ".\n\n")
 	sb.WriteString("Type  /config  (no arguments) to open the settings menu, or set keys\ndirectly:\n")
 	fmt.Fprintf(sb, "  /config provider  %-16s pick another provider\n", "<name>")
+	fmt.Fprintf(sb, "  /config api-key   %-16s save an API key (verified live)\n", "<provider>")
 	fmt.Fprintf(sb, "  /config model     %-16s set the model (auto-pulls for Ollama)\n", "<name>")
 	fmt.Fprintf(sb, "  /config host      %-16s where local Ollama runs\n", "<url>")
 	fmt.Fprintf(sb, "  /config auto-approve on|off   skip permission prompts\n")
@@ -1707,9 +1785,11 @@ func helpText() string {
 	return `Commands:
   /help            Show this help
   /models          Pick a model for the current provider (free list for OpenRouter)
-  /config          Open the settings menu (or /config <key> <value> to edit directly)
+  /config          Open the settings menu (or /config <key> <value> to edit directly; /config api-key <provider> to save a key)
+  /settings        Alias for /config
   /model <name>    Set the model (auto-pulls it for local Ollama)
   /provider        Choose a provider interactively (or: /provider <name>)
+  /login           How to add a cloud API key
   /pull <name>     Pull a model through Ollama (e.g. /pull qwen2.5-coder:7b)
   /rm <name>       Remove a local Ollama model
   /save <name>     Save this chat so you can resume it later
