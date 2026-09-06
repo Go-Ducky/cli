@@ -9,8 +9,6 @@ import (
 	"github.com/Go-Ducky/cli/internal/provider"
 )
 
-// testIsolated points config at a temp dir so tests never touch the user's
-// real saved chats (UserConfigDir honors these env vars on each platform).
 func testIsolated(t *testing.T) {
 	t.Helper()
 	t.Setenv("APPDATA", t.TempDir())
@@ -20,7 +18,7 @@ func testIsolated(t *testing.T) {
 
 func TestSaveAndList(t *testing.T) {
 	testIsolated(t)
-	// unnamed save gets a generated name
+
 	s := &Session{
 		Provider: "ollama",
 		Model:    "qwen2.5-coder:7b",

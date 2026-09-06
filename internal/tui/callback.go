@@ -8,8 +8,6 @@ import (
 	"github.com/Go-Ducky/cli/internal/provider"
 )
 
-// tuiCallback implements agent.Callback, feeding messages back into the TUI
-// via the program's Send method so rendering stays on the main loop.
 type tuiCallback struct {
 	m *model
 }

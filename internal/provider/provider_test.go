@@ -9,17 +9,17 @@ import (
 
 func TestResolveModelForProviders(t *testing.T) {
 	cfg := config.Default()
-	// Ollama
+
 	cfg.Provider = "ollama"
 	cfg.Ollama.Model = "llama3.1"
 	if got := ResolveModel(cfg, ""); got != "llama3.1" {
 		t.Fatalf("ollama model resolve: got %q", got)
 	}
-	// explicit model wins
+
 	if got := ResolveModel(cfg, "qwen2.5"); got != "qwen2.5" {
 		t.Fatalf("explicit model should win, got %q", got)
 	}
-	// openai
+
 	cfg.Provider = "openai"
 	cfg.OpenAI.Model = "gpt-4o"
 	if got := ResolveModel(cfg, ""); got != "gpt-4o" {

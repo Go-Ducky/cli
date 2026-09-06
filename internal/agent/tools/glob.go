@@ -7,10 +7,8 @@ import (
 	"strings"
 )
 
-// GlobTool finds files matching a glob pattern.
 type GlobTool struct{ base }
 
-// NewGlob creates the glob tool.
 func NewGlob() *GlobTool {
 	return &GlobTool{base: base{
 		name:        "glob",

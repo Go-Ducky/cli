@@ -1,5 +1,3 @@
-// Package session persists and reloads chats so users can save a conversation
-// and resume it later with `goducky resume`, or rename it with `goducky rename`.
 package session
 
 import (
@@ -17,7 +15,6 @@ import (
 	"github.com/Go-Ducky/cli/internal/provider"
 )
 
-// Session is a saved chat that can be resumed.
 type Session struct {
 	Name      string             `json:"name"`
 	Provider  string             `json:"provider"`
@@ -28,7 +25,6 @@ type Session struct {
 	Messages  []provider.Message `json:"messages"`
 }
 
-// Dir returns the directory where chats are stored.
 func Dir() (string, error) {
 	d, err := config.DataDir()
 	if err != nil {
@@ -37,7 +33,6 @@ func Dir() (string, error) {
 	return filepath.Join(d, "sessions"), nil
 }
 
-// Save writes or overwrites a session file. An empty name gets a generated one.
 func Save(s *Session) error {
 	if strings.TrimSpace(s.Name) == "" {
 		s.Name = AutoName()
@@ -60,7 +55,6 @@ func Save(s *Session) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
-// PathFor returns the file path a session name maps to.
 func PathFor(name string) (string, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -69,12 +63,10 @@ func PathFor(name string) (string, error) {
 	return filepath.Join(dir, sanitizeName(name)+".json"), nil
 }
 
-// AutoName returns a timestamp-based chat name (e.g. chat-2026-09-05-19-44).
 func AutoName() string {
 	return "chat-" + time.Now().Format("2006-01-02-15-04")
 }
 
-// List returns all saved sessions, most recently updated first.
 func List() ([]Session, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -106,8 +98,6 @@ func List() ([]Session, error) {
 	return sessions, nil
 }
 
-// Resolve maps a user-supplied number-or-name to a session. Numbers are
-// 1-based positions in the most-recently-updated listing.
 func Resolve(arg string) (*Session, error) {
 	sessions, err := List()
 	if err != nil {
@@ -148,12 +138,10 @@ func Resolve(arg string) (*Session, error) {
 	return nil, fmt.Errorf("no session named %q", arg)
 }
 
-// Load resolves a session by number or name and returns it.
 func Load(arg string) (*Session, error) {
 	return Resolve(arg)
 }
 
-// Rename renames a session and its file.
 func Rename(oldName, newName string) error {
 	newName = strings.TrimSpace(newName)
 	if newName == "" {
@@ -189,8 +177,6 @@ func Rename(oldName, newName string) error {
 	return os.Remove(oldPath)
 }
 
-// PrintList prints the saved chats, newest first, numbered so they can be
-// resumed by number.
 func PrintList() error {
 	sessions, err := List()
 	if err != nil {

@@ -7,10 +7,8 @@ import (
 	"runtime"
 )
 
-// AssistantName is the visible name the agent presents as.
 const AssistantName = "GoDucky"
 
-// SystemPrompt builds the agent's system instruction describing the tools.
 func SystemPrompt(workDir string) string {
 	return fmt.Sprintf(`You are %s, an AI coding assistant that works directly in a terminal.
 
@@ -47,7 +45,6 @@ tools to inspect the codebase, make changes, run tests, and complete tasks.
 	)
 }
 
-// CurrentDir returns the absolute working directory.
 func CurrentDir() string {
 	dir, err := os.Getwd()
 	if err != nil {

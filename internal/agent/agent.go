@@ -11,21 +11,18 @@ import (
 	"github.com/Go-Ducky/cli/internal/provider"
 )
 
-// Callback is a hook the UI uses to observe agent activity.
 type Callback interface {
-	// OnText is called with assistant text as it streams.
 	OnText(text string)
-	// OnToolStart is called before a tool executes.
+
 	OnToolStart(name string, args json.RawMessage)
-	// OnToolEnd is called after a tool executes.
+
 	OnToolEnd(name string, result *tools.Result)
-	// OnStatus emits a transient status line (e.g. "running command...").
+
 	OnStatus(msg string)
-	// OnComplete is called once the agent finishes a turn.
+
 	OnComplete(response string, usage provider.Usage)
 }
 
-// Agent drives the model+tool loop for a single user turn.
 type Agent struct {
 	provider    provider.Provider
 	model       string
@@ -37,24 +34,18 @@ type Agent struct {
 	cfg         *Config
 }
 
-// SetApprover installs a callback invoked when a tool needs user approval.
-// Returning true allows the action. If unset, all actions are auto-approved.
 func (a *Agent) SetApprover(f func(desc string, args map[string]any) bool) {
 	a.approver = f
 }
 
-// SetAutoApprove toggles automatic approval of all tool actions.
 func (a *Agent) SetAutoApprove(v bool) {
 	a.autoApprove = v
 }
 
-// SetProvider swaps the backend provider at runtime.
 func (a *Agent) SetProvider(p provider.Provider) { a.provider = p }
 
-// SetModel changes the active model at runtime.
 func (a *Agent) SetModel(model string) { a.model = model }
 
-// ProviderName returns the current provider's display name.
 func (a *Agent) ProviderName() string {
 	if a.provider != nil {
 		return a.provider.Name()
@@ -62,10 +53,8 @@ func (a *Agent) ProviderName() string {
 	return ""
 }
 
-// ModelName returns the current model.
 func (a *Agent) ModelName() string { return a.model }
 
-// Config controls agent behavior.
 type Config struct {
 	MaxIterations  int
 	MaxOutputChars int
@@ -73,7 +62,6 @@ type Config struct {
 	ExcludeDirs    []string
 }
 
-// New creates an agent.
 func New(p provider.Provider, model, system, workDir string, cfg *Config, reg *tools.Registry) *Agent {
 	return &Agent{
 		provider: p,
@@ -85,7 +73,6 @@ func New(p provider.Provider, model, system, workDir string, cfg *Config, reg *t
 	}
 }
 
-// Run executes a conversation turn and returns the assistant's final text.
 func (a *Agent) Run(ctx context.Context, messages []provider.Message, cb Callback) (string, provider.Usage, error) {
 	cfg := a.cfg
 	if cfg == nil {
@@ -170,14 +157,10 @@ func (a *Agent) Run(ctx context.Context, messages []provider.Message, cb Callbac
 		totalUsage.InputTokens += resp.Usage.InputTokens
 		totalUsage.OutputTokens += resp.Usage.OutputTokens
 
-		// Collect tool calls from response if non-streamed.
 		if len(resp.ToolCalls) > 0 {
 			pendingCalls = append(pendingCalls, resp.ToolCalls...)
 		}
 
-		// If the provider delivered content via the response rather than the
-		// stream callback (non-streaming path or a provider that buffers it),
-		// incorporate it.
 		if streamed.Len() == 0 && resp.Content != "" {
 			streamed.WriteString(resp.Content)
 			fullText.WriteString(resp.Content)

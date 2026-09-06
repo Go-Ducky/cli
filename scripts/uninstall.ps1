@@ -5,7 +5,6 @@ $InstallDir = Join-Path $HOME '.goducky\bin'
 
 Write-Host "Uninstalling GoDucky CLI" -ForegroundColor Cyan
 
-# 1. Remove the install dir from the user PATH (added by install.ps1).
 $UserPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($UserPath) {
     $clean = ($UserPath.Split(';') | Where-Object { $_ -and $_ -notlike "*$InstallDir*" }) -join ';'
@@ -17,7 +16,6 @@ if ($UserPath) {
     }
 }
 
-# Check whether goducky is anywhere on the PATH (or at the install dir).
 $Exe = Join-Path $InstallDir 'goducky.exe'
 $Cmd = Get-Command goducky -ErrorAction SilentlyContinue
 if (-not $Cmd -and -not (Test-Path -LiteralPath $Exe)) {
@@ -26,7 +24,6 @@ if (-not $Cmd -and -not (Test-Path -LiteralPath $Exe)) {
     exit 0
 }
 
-# 2. Remove the binary and the folder the installer created.
 if (Test-Path -LiteralPath $Exe) {
     Remove-Item -LiteralPath $Exe -Force
     Write-Host "Removed $Exe" -ForegroundColor Green
@@ -40,7 +37,6 @@ if ((Test-Path -LiteralPath (Join-Path $HOME '.goducky')) -and -not (Get-ChildIt
     Remove-Item -LiteralPath (Join-Path $HOME '.goducky') -Force -ErrorAction SilentlyContinue
 }
 
-# 3. Offer to remove saved chats and config.
 $ConfigDir = Join-Path $env:APPDATA 'goducky'
 if (Test-Path -LiteralPath $ConfigDir) {
     if ([Console]::IsInputRedirected) {

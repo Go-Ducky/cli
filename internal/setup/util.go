@@ -9,7 +9,6 @@ import (
 	"os/exec"
 )
 
-// downloadFile downloads url to dest, reporting progress via status.
 func downloadFile(ctx context.Context, url, dest string, status func(string)) error {
 	status("Downloading " + url)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -33,7 +32,6 @@ func downloadFile(ctx context.Context, url, dest string, status func(string)) er
 	return err
 }
 
-// runCmd runs a command, streaming output to stdout/stderr.
 func runCmd(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = os.Stdout

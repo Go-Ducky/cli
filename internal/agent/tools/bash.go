@@ -9,10 +9,8 @@ import (
 	"time"
 )
 
-// BashTool runs shell commands in the working directory.
 type BashTool struct{ base }
 
-// NewBash creates the bash/shell tool.
 func NewBash() *BashTool {
 	shellDesc := "Execute a shell command in the working directory"
 	if runtime.GOOS == "windows" {

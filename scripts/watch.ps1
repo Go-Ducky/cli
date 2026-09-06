@@ -1,13 +1,3 @@
-<#
-.SYNOPSIS
-Watches the Go source and rebuilds automatically whenever a .go file, go.mod,
-or go.sum changes. Rebuilds the local goducky.exe AND all platform binaries in
-dist/ (via build.ps1). Run from a terminal in the repo root:
-
-    powershell -ExecutionPolicy Bypass -File scripts\watch.ps1
-
-Press Ctrl+C to stop.
-#>
 [CmdletBinding()]
 param(
     [string]$Output = "goducky.exe",
@@ -41,8 +31,6 @@ function Invoke-Build {
     }
 }
 
-# Signature of every tracked source file (the .go files plus go.mod/go.sum).
-# The output binary is never included, so building can't re-trigger a build.
 function Get-TreeState {
     $items = @()
     $files = @()

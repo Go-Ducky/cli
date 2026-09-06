@@ -19,7 +19,6 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	tctx, dir := newTestCtx(t)
 	ctx := context.Background()
 
-	// Write
 	w := NewWrite()
 	pres, err := w.Execute(ctx, tctx, json.RawMessage(`{"file_path":"hello.txt","content":"line1\nline2"}`))
 	if err != nil {
@@ -32,7 +31,6 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 		t.Fatalf("file not written: %v", err)
 	}
 
-	// Read
 	r := NewRead()
 	rres, err := r.Execute(ctx, tctx, json.RawMessage(`{"file_path":"hello.txt"}`))
 	if err != nil {
@@ -42,7 +40,6 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 		t.Fatalf("read content mismatch: %q", rres.Content)
 	}
 
-	// Edit
 	e := NewEdit()
 	eres, err := e.Execute(ctx, tctx, json.RawMessage(`{"file_path":"hello.txt","old_string":"line2","new_string":"CHANGED"}`))
 	if err != nil {

@@ -8,35 +8,30 @@ import (
 	"github.com/Go-Ducky/cli/internal/provider"
 )
 
-// Context carries agent state and callbacks into tool execution.
 type Context struct {
-	// WorkDir is the directory all relative paths resolve against.
 	WorkDir string
-	// Approval asks the user to approve a command. Returns true if approved.
+
 	Approval func(description string, args map[string]any) bool
-	// OnLog emits a status message to the UI.
+
 	OnLog func(msg string)
 }
 
-// Result is what a tool returns to the model.
 type Result struct {
 	Content string
 	IsError bool
 }
 
-// Tool is the interface implemented by every agent tool.
 type Tool interface {
 	Name() string
 	Description() string
-	// Parameters returns the JSON schema for the tool's inputs.
+
 	Parameters() json.RawMessage
-	// Execute runs the tool.
+
 	Execute(ctx context.Context, tctx *Context, args json.RawMessage) (*Result, error)
-	// ToProvider converts the tool into the provider-facing form.
+
 	ToProvider() provider.Tool
 }
 
-// base provides common fields.
 type base struct {
 	name        string
 	description string
@@ -55,13 +50,11 @@ func (b *base) ToProvider() provider.Tool {
 	}
 }
 
-// Registry holds all available tools.
 type Registry struct {
 	tools map[string]Tool
 	order []string
 }
 
-// NewRegistry builds a registry with the given tools.
 func NewRegistry(ts ...Tool) *Registry {
 	r := &Registry{tools: map[string]Tool{}}
 	for _, t := range ts {
@@ -71,23 +64,19 @@ func NewRegistry(ts ...Tool) *Registry {
 	return r
 }
 
-// Get returns a tool by name.
 func (r *Registry) Get(name string) (Tool, bool) {
 	t, ok := r.tools[name]
 	return t, ok
 }
 
-// Names returns all tool names.
 func (r *Registry) Names() []string {
 	out := make([]string, len(r.order))
 	copy(out, r.order)
 	return out
 }
 
-// Size returns the number of registered tools.
 func (r *Registry) Size() int { return len(r.order) }
 
-// All returns all tools in registration order.
 func (r *Registry) All() []Tool {
 	out := make([]Tool, 0, len(r.order))
 	for _, n := range r.order {
@@ -96,7 +85,6 @@ func (r *Registry) All() []Tool {
 	return out
 }
 
-// ToProviderTools converts all tools to the provider schema form.
 func (r *Registry) ToProviderTools() []provider.Tool {
 	ts := r.All()
 	out := make([]provider.Tool, 0, len(ts))
@@ -106,7 +94,6 @@ func (r *Registry) ToProviderTools() []provider.Tool {
 	return out
 }
 
-// ParseArgs unmarshals raw JSON args into a typed struct.
 func ParseArgs[T any](raw json.RawMessage, target *T) error {
 	if len(raw) == 0 {
 		raw = json.RawMessage("{}")
@@ -117,7 +104,6 @@ func ParseArgs[T any](raw json.RawMessage, target *T) error {
 	return nil
 }
 
-// DefaultRegistry returns the standard set of agent tools.
 func DefaultRegistry() *Registry {
 	return NewRegistry(
 		NewRead(),

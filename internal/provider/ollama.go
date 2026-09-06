@@ -14,15 +14,12 @@ import (
 	"github.com/Go-Ducky/cli/internal/config"
 )
 
-// Ollama is a provider backed by the local Ollama runtime.
 type Ollama struct {
 	host   string
 	model  string
 	client *http.Client
 }
 
-// NewOllama creates an Ollama provider from config. The OLLAMA_HOST
-// environment variable overrides the configured host.
 func NewOllama(cfg *config.Config) *Ollama {
 	host := cfg.Ollama.Host
 	if env := os.Getenv("OLLAMA_HOST"); env != "" {
@@ -114,7 +111,7 @@ func (o *Ollama) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 			}
 			msgs = append(msgs, msg)
 		case RoleTool:
-			// Ollama expects tool results as user messages with tool_calls context.
+
 			content := ""
 			for _, blk := range m.Content {
 				if blk.Type == "tool_result" {
@@ -272,9 +269,6 @@ func mustMarshal(v any) []byte {
 	return b
 }
 
-// friendlyOllamaError adds actionable guidance when a model fails to load in
-// Ollama (llama-server crash, OOM, load failed), which is a common symptom of
-// a model too big for the machine.
 func friendlyOllamaError(err error) error {
 	if err == nil {
 		return nil
@@ -288,7 +282,6 @@ func friendlyOllamaError(err error) error {
 	return err
 }
 
-// ollamaToMessage converts an Ollama message into our Message type.
 func ollamaToMessage(m ollamaChatMessage) Message {
 	var blocks []ContentBlock
 	if m.Content != "" {
@@ -311,7 +304,6 @@ func ollamaToMessage(m ollamaChatMessage) Message {
 	return Message{Role: RoleAssistant, Content: blocks}
 }
 
-// ListModels lists models available on the local Ollama instance.
 func (o *Ollama) ListModels(ctx context.Context) ([]string, error) {
 	url := strings.TrimRight(o.host, "/") + "/api/tags"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -341,7 +333,6 @@ func (o *Ollama) ListModels(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-// HasModel reports whether a model (or one of its :tag variants) is local.
 func (o *Ollama) HasModel(ctx context.Context, name string) bool {
 	models, err := o.ListModels(ctx)
 	if err != nil {
@@ -355,8 +346,6 @@ func (o *Ollama) HasModel(ctx context.Context, name string) bool {
 	return false
 }
 
-// Pull downloads a model from the Ollama registry. It fails with a clear
-// error if the model doesn't exist upstream, which acts as our existence check.
 func (o *Ollama) Pull(ctx context.Context, name string) error {
 	payload, err := json.Marshal(map[string]any{"name": name, "stream": true})
 	if err != nil {
@@ -396,7 +385,6 @@ func (o *Ollama) Pull(ctx context.Context, name string) error {
 	return nil
 }
 
-// Remove deletes a model from the local Ollama instance.
 func (o *Ollama) Remove(ctx context.Context, name string) error {
 	payload, err := json.Marshal(map[string]any{"name": name})
 	if err != nil {
@@ -420,7 +408,6 @@ func (o *Ollama) Remove(ctx context.Context, name string) error {
 	return nil
 }
 
-// Text returns concatenated text content of a message.
 func (m Message) Text() string {
 	var sb strings.Builder
 	for _, blk := range m.Content {

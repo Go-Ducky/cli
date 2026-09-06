@@ -50,18 +50,14 @@ type modelsMsg struct {
 	err      error
 }
 
-// ollamaOpMsg reports the result of an async `ollama pull`/`ollama rm`.
 type ollamaOpMsg struct {
-	action string // "pull" | "rm"
+	action string
 	model  string
 	err    error
 }
 
-// openErrMsg reports a failed attempt to open the system browser.
 type openErrMsg struct{ err error }
 
-// pickerState renders a small inline menu at the bottom of the transcript
-// (used by /models, /provider and /config provider|model).
 type pickerState struct {
 	title    string
 	options  []string
@@ -70,9 +66,9 @@ type pickerState struct {
 }
 
 type transcriptItem struct {
-	kind string // user | assistant | tool
+	kind string
 	text string
-	meta bool // system greeting lines, rendered without a label and excluded from model context
+	meta bool
 }
 
 type model struct {
@@ -99,26 +95,25 @@ type model struct {
 	approvalPending bool
 	pendingMessages []provider.Message
 	picker          *pickerState
-	configPrompt    string // when set, the next Enter sets this config key
-	promptKeyFor    string // when set, the input collects & saves an API key for this provider
-	sessionName     string // set when the chat was resumed or /save was used
+	configPrompt    string
+	promptKeyFor    string
+	sessionName     string
 	history         []string
 	histCursor      int
 
-	selecting  bool             // a left-drag is in progress
-	selStart   *selPos          // anchor (doc row, cell), nil when not selecting
-	selEnd     *selPos          // current drag endpoint
-	plainLines []string         // plain-text body lines, parallel to viewport lines
+	selecting  bool
+	selStart   *selPos
+	selEnd     *selPos
+	plainLines []string
 
 	runCtx    context.Context
-	cancelRun context.CancelFunc // cancels the in-flight agent turn (Esc)
-	cancelled bool               // the last turn was stopped by the user
+	cancelRun context.CancelFunc
+	cancelled bool
 
-	lastArrow  time.Time // last arrow-key press, for wheel-vs-history detection
-	arrowBurst int       // how many arrow presses arrived in quick succession
+	lastArrow  time.Time
+	arrowBurst int
 }
 
-// selPos is a position in the chat body: content row + cell column.
 type selPos struct {
 	row int
 	col int
@@ -135,7 +130,6 @@ var (
 	selStyle       = lipgloss.NewStyle().Background(lipgloss.Color("237")).Foreground(lipgloss.Color("231"))
 )
 
-// New creates the TUI model.
 func New(a *agent.Agent, workDir, providerName, modelName string, cfg *config.Config, auth *config.Auth) *model {
 	ta := textarea.New()
 	ta.Placeholder = "Ask GoDucky... (Enter to send)"
@@ -155,12 +149,8 @@ func New(a *agent.Agent, workDir, providerName, modelName string, cfg *config.Co
 	}
 }
 
-// SetProgram wires the bubbletea program so callbacks can Send messages.
 func (m *model) SetProgram(p *tea.Program) { m.program = p }
 
-// SetHistory preloads a previously saved chat into the transcript before the
-// TUI starts (used by `goducky resume`). The prior messages naturally become
-// the model's context on the next prompt.
 func (m *model) SetHistory(name string, msgs []provider.Message) {
 	if name != "" {
 		m.sessionName = name
@@ -175,14 +165,13 @@ func (m *model) SetHistory(name string, msgs []provider.Message) {
 	}
 }
 
-// Session returns the current chat in a form that can be saved to disk.
 func (m *model) Session() *session.Session {
 	return &session.Session{
-		Name:      m.sessionName,
-		Provider:  m.agent.ProviderName(),
-		Model:     m.modelName,
-		WorkDir:   m.workDir,
-		Messages:  m.toProviderMessages(),
+		Name:     m.sessionName,
+		Provider: m.agent.ProviderName(),
+		Model:    m.modelName,
+		WorkDir:  m.workDir,
+		Messages: m.toProviderMessages(),
 	}
 }
 
@@ -237,8 +226,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.promptKeyFor != "" {
-			// Collecting an API key: Enter saves it, Esc cancels, other keys
-			// keep editing (rendered masked).
+
 			switch msg.String() {
 			case "enter":
 				return m.submitKeyPrompt()
@@ -286,10 +274,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.GotoBottom()
 			return m, nil
 		case "up", "down":
-			// Arrow up/down recall previous prompts like a shell history,
-			// unless they come in a rapid burst — terminals that can't report
-			// the mouse translate the wheel into fast arrow keys, and those
-			// should scroll the chat instead of recalling your last prompt.
+
 			if !m.running && !m.approvalPending {
 				now := time.Now()
 				if now.Sub(m.lastArrow) <= 200*time.Millisecond {
@@ -320,8 +305,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if m.viewport.Height > 0 {
-			// The wheel always scrolls the chat (like a messaging app). It is
-			// handled right here so it never falls through to prompt-recall.
+
 			if msg.Button == tea.MouseButtonWheelUp && msg.Action == tea.MouseActionPress {
 				m.viewport.LineUp(viewportMouseWheelDelta)
 				return m, nil
@@ -330,7 +314,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.LineDown(viewportMouseWheelDelta)
 				return m, nil
 			}
-			// Left-drag selects (or starts a new selection).
+
 			if msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress {
 				if row, col, ok := m.mouseToDoc(msg); ok {
 					m.selecting = true
@@ -577,7 +561,6 @@ func (m *model) addMetaItem(kind, text string) {
 	m.items = append(m.items, transcriptItem{kind: kind, text: text, meta: true})
 }
 
-// pushHistory records a sent prompt and resets the recall cursor to "new input".
 func (m *model) pushHistory(text string) {
 	if len(m.history) > 0 && m.history[len(m.history)-1] == text {
 		m.histCursor = len(m.history)
@@ -587,7 +570,6 @@ func (m *model) pushHistory(text string) {
 	m.histCursor = len(m.history)
 }
 
-// recallHistory walks back through sent prompts (arrow up).
 func (m *model) recallHistory() {
 	if len(m.history) == 0 || m.histCursor <= 0 {
 		return
@@ -597,7 +579,6 @@ func (m *model) recallHistory() {
 	m.input.CursorEnd()
 }
 
-// forwardHistory walks forward again toward a fresh input (arrow down).
 func (m *model) forwardHistory() {
 	if m.histCursor >= len(m.history) {
 		return
@@ -654,9 +635,6 @@ func (m *model) renderBody() string {
 	return sb.String()
 }
 
-// plainBodyLines builds the same lines as renderBody but without styling, one
-// entry per viewport line. It is used both to highlight and to extract the
-// selected text, so it must wrap exactly like renderBody does.
 func (m *model) plainBodyLines(w int) []string {
 	var lines []string
 	add := func(s string) {
@@ -696,9 +674,6 @@ func (m *model) plainBodyLines(w int) []string {
 	return lines
 }
 
-// highlightedBody renders the plain body with the current selection painted,
-// matching the terminal's own look: a highlighted block from the anchor cell to
-// the endpoint cell.
 func (m *model) highlightedBody() string {
 	a, b := m.normSel()
 	if b.row >= len(m.plainLines) {
@@ -733,7 +708,6 @@ func (m *model) highlightedBody() string {
 	return strings.TrimSuffix(s, "\n")
 }
 
-// normSel returns the selection endpoints ordered from top-left to bottom-right.
 func (m *model) normSel() (selPos, selPos) {
 	a := selPos{}
 	b := selPos{}
@@ -755,14 +729,10 @@ func (m *model) normSel() (selPos, selPos) {
 	return a, b
 }
 
-// bodyPlain returns the unhighlighted plain body (used when there is no valid
-// selection to paint).
 func (m *model) bodyPlain() string {
 	return strings.Join(m.plainLines, "\n")
 }
 
-// selSlice renders a substring of a plain line (covering display cells from..to)
-// with the selection style, leaving the rest unstyled.
 func selSlice(line string, from, to int, st lipgloss.Style) string {
 	w := displayWidth(line)
 	if from < 0 {
@@ -783,10 +753,8 @@ func selSlice(line string, from, to int, st lipgloss.Style) string {
 	return pre + st.Render(sel) + post
 }
 
-// displayWidth returns the terminal display width of s.
 func displayWidth(s string) int { return runewidth.StringWidth(s) }
 
-// subCells returns the substring of s covering display cells [from, to).
 func subCells(s string, from, to int) string {
 	if from >= to {
 		return ""
@@ -816,9 +784,6 @@ func subCells(s string, from, to int) string {
 	return s[start:end]
 }
 
-// wrapText wraps plain text to width cells using terminal display width, so it
-// scrolls down instead of overflowing. Word-aware, with a rune-level fallback
-// that keeps Czech, Polish, Spanish, CJK etc. intact.
 func wrapText(s string, width int) string {
 	if width < 8 {
 		width = 8
@@ -878,8 +843,6 @@ func wrapLine(line string, width int) string {
 	return strings.Join(out, "\n")
 }
 
-// wrapRunes breaks a token into width-sized pieces without splitting a
-// multi-byte character (measured by display width).
 func wrapRunes(s string, width int) []string {
 	var out []string
 	var cur strings.Builder
@@ -912,8 +875,6 @@ func (m *model) assistantName() string {
 
 func (m *model) closePicker() { m.picker = nil }
 
-// openModelsPicker queries the current provider for available models (off the
-// event loop) and opens a picker with the results when ready.
 func (m *model) openModelsPicker() tea.Cmd {
 	prov := m.agent.ProviderName()
 	cfg := m.cfg
@@ -924,15 +885,12 @@ func (m *model) openModelsPicker() tea.Cmd {
 	}
 }
 
-// fetchModelsFor lists models for a provider. Ollama, Groq, OpenAI and
-// OpenRouter are queried live; the rest use a small curated list.
 func fetchModelsFor(prov string, cfg *config.Config, auth *config.Auth) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	switch prov {
 	case "ollama":
-		// Show what's installed (marked) plus the whole recommended shortlist,
-		// so picking is never stuck with just one model.
+
 		installed, err := provider.NewOllama(cfg).ListModels(ctx)
 		seen := map[string]bool{}
 		out := make([]string, 0, len(installed)+len(setup.RecommendedModelIDs()))
@@ -961,12 +919,15 @@ func fetchModelsFor(prov string, cfg *config.Config, auth *config.Auth) ([]strin
 			return models, nil
 		}
 		return curatedModels(prov), nil
+	case "opencode":
+		if models, err := provider.NewOpenCodeZen(cfg, auth).ListModels(ctx); err == nil && len(models) > 0 {
+			return models, nil
+		}
+		return curatedModels(prov), nil
 	}
 	return curatedModels(prov), nil
 }
 
-// curatedModels is a fallback / default list shown when a live query fails or
-// the provider doesn't expose one.
 func curatedModels(prov string) []string {
 	switch prov {
 	case "ollama":
@@ -983,11 +944,12 @@ func curatedModels(prov string) []string {
 		return []string{"gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"}
 	case "openrouter":
 		return []string{"openrouter/free", "aimlapi/qwen2.5-coder-3b", "qwen/qwen-2.5-coder-7b-instruct"}
+	case "opencode":
+		return []string{"big-pickle", "deepseek-v4-flash", "minimax-m2.5", "qwen3.7-max", "gpt-5.2-codex"}
 	}
 	return []string{"openrouter/free"}
 }
 
-// pickModel applies a selection from the /models or /config model picker.
 func pickModel(m *model, opt string) tea.Cmd {
 	if opt == "" || strings.HasPrefix(opt, "──") {
 		return nil
@@ -1000,15 +962,12 @@ func pickModel(m *model, opt string) tea.Cmd {
 	}
 	m.addItem("assistant", "Using model "+model)
 
-	// If it's a local model we don't have yet, pull it automatically.
 	if prov == "ollama" {
 		return m.ensureOllamaModel(model)
 	}
 	return nil
 }
 
-// ensureOllamaModel pulls a model through the Ollama API when it isn't local
-// yet (and errors clearly if the name doesn't exist in the Ollama library).
 func (m *model) ensureOllamaModel(model string) tea.Cmd {
 	if m.agent.ProviderName() != "ollama" {
 		return nil
@@ -1024,10 +983,8 @@ func (m *model) ensureOllamaModel(model string) tea.Cmd {
 	}
 }
 
-// agentCtx returns the default background context for helper calls.
 func (m *model) agentCtx() context.Context { return context.Background() }
 
-// runOpenBrowser opens a URL in the system browser, cross-platform.
 func (m *model) runOpenBrowser(url string) tea.Cmd {
 	return func() tea.Msg {
 		var cmd *exec.Cmd
@@ -1052,11 +1009,10 @@ func containsString(list []string, s string) bool {
 	return false
 }
 
-// providerPicker opens the inline menu for choosing a provider.
 func (m *model) providerPicker() {
 	m.picker = &pickerState{
 		title:   "Choose a provider",
-		options: []string{"ollama", "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter", "── Cancel ──"},
+		options: []string{"ollama", "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter", "opencode", "── Cancel ──"},
 		onPick: func(m *model, opt string) tea.Cmd {
 			if strings.HasPrefix(opt, "──") {
 				return nil
@@ -1067,11 +1023,8 @@ func (m *model) providerPicker() {
 	m.viewport.GotoBottom()
 }
 
-// copiedMsg reports after a Ctrl+C text copy.
 type copiedMsg struct{ method string }
 
-// copyText returns what Ctrl+C copies: the last assistant reply, or the whole
-// transcript when there is no reply yet.
 func (m *model) copyText() string {
 	for i := len(m.items) - 1; i >= 0; i-- {
 		if m.items[i].kind == "assistant" {
@@ -1089,7 +1042,6 @@ func (m *model) copyText() string {
 	return strings.TrimSpace(sb.String())
 }
 
-// copyAllText returns the full conversation, prompts and replies, for Ctrl+B.
 func (m *model) copyAllText() string {
 	var sb strings.Builder
 	for _, it := range m.items {
@@ -1107,8 +1059,6 @@ func (m *model) copyAllText() string {
 	return strings.TrimSpace(sb.String())
 }
 
-// copyToClipCmd is the Ctrl+C handler: it copies the last reply (or the whole
-// transcript) to the clipboard instead of quitting.
 func (m *model) copyToClipCmd() (tea.Model, tea.Cmd) {
 	text := m.copyText()
 	if text == "" {
@@ -1123,7 +1073,6 @@ func (m *model) copyToClipCmd() (tea.Model, tea.Cmd) {
 	}
 }
 
-// copyAllCmd is the Ctrl+B handler: it copies the entire conversation.
 func (m *model) copyAllCmd() (tea.Model, tea.Cmd) {
 	text := m.copyAllText()
 	if text == "" {
@@ -1138,8 +1087,6 @@ func (m *model) copyAllCmd() (tea.Model, tea.Cmd) {
 	}
 }
 
-// mouseToDoc maps a mouse event to a body position (content row + cell column),
-// accounting for the one-line header above the viewport.
 func (m *model) mouseToDoc(msg tea.MouseMsg) (row, col int, ok bool) {
 	header := 0
 	if m.width > 0 {
@@ -1165,7 +1112,6 @@ func (m *model) mouseToDoc(msg tea.MouseMsg) (row, col int, ok bool) {
 	return row, msg.X, true
 }
 
-// copySelectionCmd copies the mouse-selected text on release.
 func (m *model) copySelectionCmd() (tea.Model, tea.Cmd) {
 	text := m.selectedText()
 	m.selStart, m.selEnd = nil, nil
@@ -1180,8 +1126,6 @@ func (m *model) copySelectionCmd() (tea.Model, tea.Cmd) {
 	}
 }
 
-// selectedText returns the text covered by the current selection, using the
-// plain body lines that mirror the rendered output.
 func (m *model) selectedText() string {
 	if m.selStart == nil || m.selEnd == nil {
 		return ""
@@ -1210,8 +1154,6 @@ func (m *model) selectedText() string {
 	return sb.String()
 }
 
-// copyToClipboard copies text using a native helper when available, otherwise
-// the OSC 52 terminal clipboard (works in Windows Terminal, iTerm2, kitty…).
 func copyToClipboard(text string) string {
 	var candidates [][]string
 	switch runtime.GOOS {
@@ -1261,7 +1203,7 @@ func (m *model) View() string {
 	}
 	inputView := ""
 	if m.promptKeyFor != "" {
-		// Mask the API key while it is being pasted in.
+
 		n := len([]rune(m.input.Value()))
 		if max := m.width - 20; n > max {
 			n = max
@@ -1279,8 +1221,6 @@ func (m *model) View() string {
 	return header + view + "\n" + statusLine + inputView
 }
 
-// runAgent starts the agent in a returned tea.Cmd (runs in its own goroutine)
-// using the given context, so Esc can cancel the turn.
 func (m *model) runAgent(ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		messages := m.pendingMessages
@@ -1305,7 +1245,6 @@ func (m *model) runAgent(ctx context.Context) tea.Cmd {
 	}
 }
 
-// approvalAnswer answers a pending tool-approval prompt.
 func (m *model) approvalAnswer(ok bool) (tea.Model, tea.Cmd) {
 	if m.approvalChan == nil {
 		return m, nil
@@ -1316,7 +1255,6 @@ func (m *model) approvalAnswer(ok bool) (tea.Model, tea.Cmd) {
 	}
 }
 
-// stopTurn cancels the in-flight agent turn (Esc while running).
 func (m *model) stopTurn() (tea.Model, tea.Cmd) {
 	if m.cancelRun != nil {
 		m.cancelRun()
@@ -1330,7 +1268,6 @@ func (m *model) stopTurn() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// finishStopped commits the partial reply and reports that the turn was stopped.
 func (m *model) finishStopped() tea.Model {
 	if m.current != "" {
 		m.addItem("assistant", m.current)
@@ -1347,7 +1284,6 @@ func (m *model) finishStopped() tea.Model {
 	return m
 }
 
-// apiKeyMsg reports the outcome of saving an API key typed in the chat.
 type apiKeyMsg struct {
 	provider string
 	key      string
@@ -1355,8 +1291,6 @@ type apiKeyMsg struct {
 	err      error
 }
 
-// submitKeyPrompt validates and saves the key typed into the input, then
-// returns the flow to apiKeyMsg so the provider switch can finish on the loop.
 func (m *model) submitKeyPrompt() (tea.Model, tea.Cmd) {
 	key := strings.TrimSpace(m.input.Value())
 	prov := m.promptKeyFor
@@ -1372,7 +1306,7 @@ func (m *model) submitKeyPrompt() (tea.Model, tea.Cmd) {
 			if strings.Contains(err.Error(), "rejected") {
 				return apiKeyMsg{provider: prov, key: key, err: err}
 			}
-			verified = false // offline/unreachable: save anyway
+			verified = false
 		}
 		auth, err := config.LoadAuth()
 		if err != nil {
@@ -1386,7 +1320,6 @@ func (m *model) submitKeyPrompt() (tea.Model, tea.Cmd) {
 	}
 }
 
-// setAuthKey stores a key on an Auth struct.
 func setAuthKey(a *config.Auth, prov, key string) {
 	switch prov {
 	case "groq":
@@ -1399,10 +1332,11 @@ func setAuthKey(a *config.Auth, prov, key string) {
 		a.GeminiAPIKey = key
 	case "openrouter":
 		a.OpenRouterAPIKey = key
+	case "opencode":
+		a.OpenCodeAPIKey = key
 	}
 }
 
-// hasProviderKey reports whether a key is already available (auth file or env).
 func (m *model) hasProviderKey(prov string) bool {
 	var akey, env string
 	switch prov {
@@ -1416,6 +1350,8 @@ func (m *model) hasProviderKey(prov string) bool {
 		akey, env = m.auth.GeminiAPIKey, m.cfg.Gemini.EnvKey
 	case "openrouter":
 		akey, env = m.auth.OpenRouterAPIKey, m.cfg.OpenRouter.EnvKey
+	case "opencode":
+		akey, env = m.auth.OpenCodeAPIKey, m.cfg.OpenCode.EnvKey
 	}
 	if akey != "" {
 		return true
@@ -1441,8 +1377,6 @@ func approvalLabel(desc string, args map[string]any) string {
 	return sb.String()
 }
 
-// handleCommand processes slash-commands typed in the input. It renders
-// feedback into the transcript and optionally returns a quit command.
 func (m *model) handleCommand(cmd string) tea.Cmd {
 	parts := strings.Fields(strings.TrimSpace(cmd))
 	if len(parts) == 0 {
@@ -1478,7 +1412,7 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 		m.providerPicker()
 	case "/login":
 		m.addItem("assistant",
-			"To add a cloud API key, just type:\n  /provider openrouter\n  /provider groq\n  /provider openai\n  /provider anthropic\n  /provider gemini\nGoDucky prompts you to paste the key, verifies it live, saves it, and switches.\nYou can also save one without the chat: run `goducky --login openrouter`.")
+			"To add a cloud API key, just type:\n  /provider openrouter\n  /provider groq\n  /provider openai\n  /provider opencode\n  /provider anthropic\n  /provider gemini\nGoDucky prompts you to paste the key, verifies it live, saves it, and switches.\nYou can also save one without the chat: run `goducky --login openrouter`.")
 	case "/save":
 		name := strings.TrimSpace(arg)
 		if name == "" {
@@ -1562,12 +1496,11 @@ func (m *model) handleCommand(cmd string) tea.Cmd {
 	return nil
 }
 
-// switchProvider rebuilds the backend from config for the named provider.
 func (m *model) switchProvider(name string) tea.Cmd {
 	name = strings.ToLower(strings.TrimSpace(name))
-	valid := map[string]bool{"ollama": true, "groq": true, "openai": true, "openai_compatible": true, "anthropic": true, "gemini": true, "openrouter": true}
+	valid := map[string]bool{"ollama": true, "groq": true, "openai": true, "openai_compatible": true, "anthropic": true, "gemini": true, "openrouter": true, "opencode": true}
 	if !valid[name] {
-		m.addItem("assistant", "Unknown provider: "+name+"\nValid: ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter")
+		m.addItem("assistant", "Unknown provider: "+name+"\nValid: ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter, opencode")
 		return nil
 	}
 	oldProvider := m.agent.ProviderName()
@@ -1576,7 +1509,7 @@ func (m *model) switchProvider(name string) tea.Cmd {
 		return nil
 	}
 	if name != "ollama" && !m.hasProviderKey(name) {
-		// Cloud provider with no key yet: collect one inline before switching.
+
 		m.promptKeyFor = name
 		m.input.Reset()
 		m.input.Placeholder = "paste API key…"
@@ -1614,13 +1547,13 @@ func providersHelp(cfg *config.Config) string {
 	fmt.Fprintf(sb, "  groq      : cloud, free tier (%s)\n", cfg.Groq.Model)
 	fmt.Fprintf(sb, "  openai    : cloud (%s)\n", cfg.OpenAI.Model)
 	fmt.Fprintf(sb, "  openrouter: cloud, many models (%s)\n", cfg.OpenRouter.Model)
+	fmt.Fprintf(sb, "  opencode  : cloud, curated coding models (%s)\n", cfg.OpenCode.Model)
 	fmt.Fprintf(sb, "  anthropic : cloud (%s)\n", cfg.Anthropic.Model)
 	fmt.Fprintf(sb, "  gemini    : cloud (%s)\n", cfg.Gemini.Model)
 	sb.WriteString("Route: /provider <name>  ·  Model: /model <name>")
 	return sb.String()
 }
 
-// configCmd shows or edits config keys in-app via /config.
 func (m *model) configCmd(arg string) tea.Cmd {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
@@ -1669,7 +1602,6 @@ func (m *model) configCmd(arg string) tea.Cmd {
 	return pullCmd
 }
 
-// configValuePrompt asks the user to type a value for a config key in the input bar.
 func (m *model) configValuePrompt(key, hint string) tea.Cmd {
 	m.configPrompt = key
 	m.addItem("assistant", "⚙ Setting "+key+": "+hint+"\nType the new value and press Enter (Esc to cancel).")
@@ -1678,7 +1610,6 @@ func (m *model) configValuePrompt(key, hint string) tea.Cmd {
 	return nil
 }
 
-// configPicker opens the interactive settings menu behind /config.
 func (m *model) configPicker() {
 	opt := func(name, val string) string { return name + "   " + val }
 	excludes := strings.Join(m.cfg.Agent.ExcludeDirs, ", ")
@@ -1733,8 +1664,6 @@ func (m *model) configPicker() {
 	m.viewport.GotoBottom()
 }
 
-// applyModel sets the model everywhere: the active agent and the active
-// provider's config block, so it survives a restart.
 func (m *model) applyModel(model string) {
 	m.agent.SetModel(model)
 	m.modelName = model
@@ -1835,8 +1764,6 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "\n...[truncated]"
 }
 
-// truncRunes cuts a string to n runes without splitting a multi-byte character,
-// which matters for Czech, Polish, Spanish and other non-ASCII text.
 func truncRunes(s string, n int) string {
 	s = strings.TrimSpace(s)
 	r := []rune(s)
@@ -1846,8 +1773,6 @@ func truncRunes(s string, n int) string {
 	return string(r[:n]) + "..."
 }
 
-// truncateWidth cuts a string to fit width terminal cells (ANSI-free text),
-// keeping an ellipsis.
 func truncateWidth(s string, width int) string {
 	if runewidth.StringWidth(s) <= width {
 		return s

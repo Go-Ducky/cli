@@ -13,19 +13,15 @@ import (
 	"time"
 )
 
-// DefaultModel is the recommended local coding model to auto-pull.
 const DefaultModel = "qwen2.5-coder:7b"
 
-// OllamaHost is the default Ollama server address.
 const OllamaHost = "http://localhost:11434"
 
-// IsOllamaInstalled reports whether the ollama binary is on PATH.
 func IsOllamaInstalled() bool {
 	_, err := exec.LookPath("ollama")
 	return err == nil
 }
 
-// IsOllamaRunning checks whether the Ollama server responds.
 func IsOllamaRunning() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -37,7 +33,6 @@ func IsOllamaRunning() bool {
 	return resp.StatusCode == 200
 }
 
-// OllamaHome returns the directory where Ollama stores its data, if known.
 func OllamaHome() string {
 	if h := os.Getenv("OLLAMA_MODELS"); h != "" {
 		return h
@@ -49,7 +44,6 @@ func OllamaHome() string {
 	return filepath.Join(home, ".ollama")
 }
 
-// InstallOllama downloads and installs Ollama for the current OS.
 func InstallOllama(ctx context.Context, status func(string)) error {
 	status("Installing Ollama...")
 
@@ -65,7 +59,6 @@ func InstallOllama(ctx context.Context, status func(string)) error {
 	}
 }
 
-// installOllamaWindows tries winget, then direct download.
 func installOllamaWindows(ctx context.Context, status func(string)) error {
 	if _, err := exec.LookPath("winget"); err == nil {
 		status("Using winget to install Ollama...")
@@ -113,8 +106,6 @@ func installOllamaLinux(ctx context.Context, status func(string)) error {
 	return nil
 }
 
-// EnsureRunning starts the Ollama server if installed but not running,
-// waits for it to become responsive, then returns.
 func EnsureRunning(ctx context.Context, status func(string)) error {
 	if IsOllamaRunning() {
 		return nil
@@ -151,7 +142,6 @@ func EnsureRunning(ctx context.Context, status func(string)) error {
 	return fmt.Errorf("Ollama server did not become ready in time")
 }
 
-// PullModel pulls a model into the running Ollama instance.
 func PullModel(ctx context.Context, model string, status func(string)) error {
 	status("Pulling model " + model + " (first download may take a while)...")
 	cmd := exec.CommandContext(ctx, "ollama", "pull", model)
@@ -163,7 +153,6 @@ func PullModel(ctx context.Context, model string, status func(string)) error {
 	return nil
 }
 
-// HasModel checks whether a model is already available locally.
 func HasModel(ctx context.Context, model string) (bool, error) {
 	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

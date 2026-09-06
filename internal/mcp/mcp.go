@@ -1,9 +1,3 @@
-// Package mcp implements a minimal MCP (Model Context Protocol) server over
-// stdio. It exposes goducky's agent tools so MCP clients (Claude Desktop, IDEs,
-// etc.) can operate on a working directory you select with goducky mcp --dir.
-//
-// The wire protocol is newline-delimited JSON-RPC 2.0 (one JSON object per
-// line on stdin/stdout), as used by MCP's stdio transport.
 package mcp
 
 import (
@@ -18,14 +12,12 @@ import (
 
 const protocolVersion = "2024-11-05"
 
-// Server handles MCP requests.
 type Server struct {
 	workDir string
 	reg     *tools.Registry
 	version string
 }
 
-// New creates an MCP server that runs tools in workDir.
 func New(workDir string, reg *tools.Registry, version string) *Server {
 	return &Server{workDir: workDir, reg: reg, version: version}
 }
@@ -49,8 +41,6 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
-// Run serves requests from r until EOF, writing responses to w. Only protocol
-// traffic goes to w; log anything else to stderr.
 func (s *Server) Run(ctx context.Context, r io.Reader, w io.Writer) error {
 	enc := json.NewEncoder(w)
 	sc := bufio.NewScanner(r)

@@ -46,7 +46,6 @@ else
   TAG="v${VERSION}"
 fi
 
-# --- check for an existing install -----------------------------------
 LATEST_VER=""
 if [[ "$VERSION" == "latest" ]]; then
   LATEST_VER="$(printf '%s' "$RELEASE_JSON" | grep -o '"name": *"[^"]*"' | head -1 | sed 's/.*"name": *"//; s/"$//; s/^GoDucky *//' || true)"
@@ -105,9 +104,6 @@ mkdir -p "$BIN_DIR"
 info "Installing to $BIN_DIR/goducky"
 install -m 755 "$TMP_DIR/goducky" "$BIN_DIR/goducky"
 
-# macOS Gatekeeper: downloaded binaries are quarantined and flagged as unsigned,
-# which blocks the first run. Clear the quarantine flag and ad-hoc sign so the
-# binary runs on both Apple Silicon (arm64) and Intel (amd64).
 if [[ "$OS" == "Darwin" ]]; then
   xattr -d com.apple.quarantine "$BIN_DIR/goducky" 2>/dev/null || true
   if command -v codesign >/dev/null 2>&1; then
@@ -115,7 +111,6 @@ if [[ "$OS" == "Darwin" ]]; then
   fi
 fi
 
-# append_line <file> <line> -- appends a marker line at most once.
 append_line() {
   local file="$1" line="$2"
   [ -f "$file" ] || touch "$file"
@@ -124,7 +119,6 @@ append_line() {
   info "Added $BIN_DIR to PATH in $file"
 }
 
-# auto-add the install dir to PATH for the user's shell (idempotent).
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
   SHELL_NAME="$(basename "${SHELL:-}")"
   case "$SHELL_NAME" in

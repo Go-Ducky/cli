@@ -22,8 +22,6 @@ const (
 	updateDownloadURL = "https://github.com/" + updateRepo + "/releases/download/%s/%s"
 )
 
-// updateCmd self-updates GoDucky from the latest GitHub release
-// (`goducky update`) or from an explicit release tag (`goducky update v0.1.0`).
 func updateCmd(args []string) error {
 	ref := "latest"
 	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
@@ -65,7 +63,6 @@ type releaseAssets struct {
 	} `json:"assets"`
 }
 
-// fetchRelease resolves "latest" or a tag to the release + tag name.
 func fetchRelease(ref string) (releaseAssets, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -98,7 +95,6 @@ func fetchRelease(ref string) (releaseAssets, string, error) {
 	return rel, rel.TagName, nil
 }
 
-// platformAsset maps this machine to the release asset name.
 func platformAsset() string {
 	suffix := ""
 	if runtime.GOOS == "windows" {
@@ -107,8 +103,6 @@ func platformAsset() string {
 	return "goducky-" + runtime.GOOS + "-" + runtime.GOARCH + suffix
 }
 
-// buildVersionTag derives the release tag the *current* binary was built from,
-// matching how scripts/build.ps1 names dev builds (dev-<sha>).
 func buildVersionTag() string {
 	v := strings.TrimSpace(version)
 	for _, part := range strings.Split(v, "-") {
@@ -131,8 +125,6 @@ func isHexSHA(s string) bool {
 	return true
 }
 
-// updateFromRelease downloads the matching asset (verifying against
-// checksums.txt when present) and replaces the running executable.
 func updateFromRelease(exe string, rel releaseAssets, assetName, tag string) error {
 	var checksums map[string]string
 	for _, a := range rel.Assets {
@@ -154,7 +146,7 @@ func updateFromRelease(exe string, rel releaseAssets, assetName, tag string) err
 	}
 	if downloadURL == "" {
 		if runtime.GOOS == "darwin" {
-			// fall back to the universal binary when the arch-specific one is missing
+
 			for _, a := range rel.Assets {
 				if a.Name == "goducky-darwin-universal" {
 					assetName = a.Name
@@ -240,8 +232,6 @@ func parseChecksums(s string) map[string]string {
 	return out
 }
 
-// replaceExecutable swaps in the new binary. On Windows a running executable
-// cannot be overwritten, so the old file is renamed aside first.
 func replaceExecutable(newPath, exe string) error {
 	if runtime.GOOS == "windows" {
 		backup := exe + ".bak"

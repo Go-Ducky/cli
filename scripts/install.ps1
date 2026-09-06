@@ -23,7 +23,6 @@ if ($Version -eq 'latest') {
     $LatestVer = $Version
 }
 
-# Check for an existing install.
 $Existing = $null
 $Cmd = Get-Command goducky -ErrorAction SilentlyContinue
 if ($Cmd) {

@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-// ReadTool reads a file's contents.
 type ReadTool struct{ base }
 
-// NewRead creates the read tool.
 func NewRead() *ReadTool {
 	return &ReadTool{base: base{
 		name:        "read",

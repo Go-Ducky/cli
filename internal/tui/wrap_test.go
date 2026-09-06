@@ -29,7 +29,7 @@ func TestWrapLineLongWords(t *testing.T) {
 }
 
 func TestWrapRunesCJK(t *testing.T) {
-	// Czech example: over-long single token must wrap without corrupting runes.
+
 	text := "přílišžluťoučkýkůňpřeskákalpotůcky"
 	got := wrapText(text, 12)
 	for _, line := range strings.Split(got, "\n") {
@@ -50,7 +50,7 @@ func TestSubCells(t *testing.T) {
 		to   int
 		want string
 	}{
-{"hello world", 0, 5, "hello"},
+		{"hello world", 0, 5, "hello"},
 		{"hello world", 6, 11, "world"},
 		{"hello world", 3, 8, "lo wo"},
 		{"héllo", 1, 4, "éll"},
@@ -73,14 +73,14 @@ func TestSelectedTextOrderReverse(t *testing.T) {
 	m := &model{
 		plainLines: []string{"first line", "second line", "third"},
 	}
-	// Drag from bottom to top: endpoint above anchor.
+
 	b := selPos{row: 0, col: 6}
 	e := selPos{row: 2, col: 5}
 	m.selStart, m.selEnd = &e, &b
 	if got, want := m.selectedText(), "line\nsecond line\nthird"; got != want {
 		t.Fatalf("selectedText = %q, want %q", got, want)
 	}
-	// Single row selection.
+
 	m.selStart, m.selEnd = &selPos{row: 1, col: 2}, &selPos{row: 1, col: 11}
 	if got, want := m.selectedText(), "cond line"; got != want {
 		t.Fatalf("selectedText single = %q, want %q", got, want)

@@ -14,14 +14,12 @@ import (
 	"github.com/Go-Ducky/cli/internal/config"
 )
 
-// Anthropic is a provider for Anthropic's Claude API.
 type Anthropic struct {
 	apiKey string
 	model  string
 	client *http.Client
 }
 
-// NewAnthropic creates an Anthropic provider from config and auth.
 func NewAnthropic(cfg *config.Config, auth *config.Auth) *Anthropic {
 	apiKey := cfg.Anthropic.APIKey
 	if apiKey == "" && auth != nil {
@@ -40,7 +38,7 @@ func NewAnthropic(cfg *config.Config, auth *config.Auth) *Anthropic {
 func (a *Anthropic) Name() string { return "anthropic" }
 
 type anthropicContentBlock struct {
-	Type      string `json:"type"` // text | tool_use | tool_result | thinking
+	Type      string `json:"type"`
 	Text      string `json:"text,omitempty"`
 	ID        string `json:"id,omitempty"`
 	Name      string `json:"name,omitempty"`
@@ -99,9 +97,7 @@ func (a *Anthropic) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, e
 		system = req.System
 	}
 
-	// We track consecutive tool_results to merge into a single assistant
-	// message as Anthropic requires tool_use + tool_result in the same turn.
-	var tw []anthropicContentBlock // tool result blocks for current turn
+	var tw []anthropicContentBlock
 	var twRole string
 	flush := func() {
 		if len(tw) == 0 {
@@ -239,7 +235,6 @@ func (a *Anthropic) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, e
 	}, nil
 }
 
-// anthropicToMessage converts Anthropic content blocks into our Message type.
 func anthropicToMessage(blocks []anthropicContentBlock) Message {
 	var out []ContentBlock
 	for _, b := range blocks {
@@ -343,7 +338,6 @@ func (a *Anthropic) streamChat(ctx context.Context, httpReq *http.Request, paylo
 	return &ChatResponse{Usage: usage}, nil
 }
 
-// ListModels is not supported by the Anthropic API without extra calls.
 func (a *Anthropic) ListModels(ctx context.Context) ([]string, error) {
 	return nil, nil
 }

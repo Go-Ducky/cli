@@ -11,60 +11,54 @@ import (
 	"strings"
 )
 
-// Config is the top-level user configuration.
 type Config struct {
-	Onboarded  bool            `json:"onboarded"` // set to true after first-run setup
-	Provider   string          `json:"provider"`  // ollama | groq | openai | openai_compatible | anthropic | gemini | openrouter
+	Onboarded  bool            `json:"onboarded"`
+	Provider   string          `json:"provider"`
 	Model      string          `json:"model"`
 	Ollama     OllamaConfig    `json:"ollama"`
 	Groq       GroqConfig      `json:"groq"`
 	OpenAI     OpenAIConfig    `json:"openai"`
 	OpenRouter OpenAIConfig    `json:"openrouter"`
+	OpenCode   OpenAIConfig    `json:"opencode"`
 	Anthropic  AnthropicConfig `json:"anthropic"`
 	Gemini     GeminiConfig    `json:"gemini"`
 	Agent      AgentConfig     `json:"agent"`
 }
 
-// OllamaConfig configures the local Ollama runtime.
 type OllamaConfig struct {
-	Host  string `json:"host"`  // default http://localhost:11434
-	Model string `json:"model"` // e.g. llama3.1
+	Host  string `json:"host"`
+	Model string `json:"model"`
 }
 
-// OpenAIConfig configures any OpenAI-compatible endpoint.
 type OpenAIConfig struct {
-	BaseURL string `json:"base_url"` // e.g. https://api.openai.com/v1
+	BaseURL string `json:"base_url"`
 	APIKey  string `json:"api_key"`
 	Model   string `json:"model"`
-	EnvKey  string `json:"env_key"` // env var holding the key, e.g. OPENAI_API_KEY
+	EnvKey  string `json:"env_key"`
 }
 
-// AnthropicConfig configures Anthropic Claude.
 type AnthropicConfig struct {
 	APIKey string `json:"api_key"`
 	Model  string `json:"model"`
 	EnvKey string `json:"env_key"`
 }
 
-// GeminiConfig configures Google Gemini.
 type GeminiConfig struct {
 	APIKey string `json:"api_key"`
 	Model  string `json:"model"`
 	EnvKey string `json:"env_key"`
 }
 
-// GroqConfig configures Groq (free fast cloud models).
 type GroqConfig struct {
 	APIKey string `json:"api_key"`
 	Model  string `json:"model"`
 	EnvKey string `json:"env_key"`
 }
 
-// AgentConfig controls agentic behavior.
 type AgentConfig struct {
-	MaxIterations  int      `json:"max_iterations"` // max tool-calling loops per prompt
+	MaxIterations  int      `json:"max_iterations"`
 	MaxOutputChars int      `json:"max_output_chars"`
-	AutoApprove    bool     `json:"auto_approve"` // skip permission prompts
+	AutoApprove    bool     `json:"auto_approve"`
 	ExcludeDirs    []string `json:"exclude_dirs"`
 }
 
@@ -73,7 +67,6 @@ const (
 	authFileName   = "auth.json"
 )
 
-// Default returns a configuration with sensible defaults.
 func Default() *Config {
 	return &Config{
 		Provider: "ollama",
@@ -91,6 +84,11 @@ func Default() *Config {
 			BaseURL: "https://openrouter.ai/api/v1",
 			Model:   "openrouter/free",
 			EnvKey:  "OPENROUTER_API_KEY",
+		},
+		OpenCode: OpenAIConfig{
+			BaseURL: "https://opencode.ai/zen/v1",
+			Model:   "big-pickle",
+			EnvKey:  "OPENCODE_API_KEY",
 		},
 		Anthropic: AnthropicConfig{
 			Model:  "claude-3-5-sonnet-latest",
@@ -113,7 +111,6 @@ func Default() *Config {
 	}
 }
 
-// ConfigDir returns the platform-appropriate config directory.
 func ConfigDir() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -122,7 +119,6 @@ func ConfigDir() (string, error) {
 	return filepath.Join(dir, "goducky"), nil
 }
 
-// DataDir returns the platform-appropriate data directory.
 func DataDir() (string, error) {
 	if runtime.GOOS == "darwin" {
 		home, _ := os.UserHomeDir()
@@ -135,7 +131,6 @@ func DataDir() (string, error) {
 	return filepath.Join(dir, "goducky"), nil
 }
 
-// ConfigPath returns the full path to the config file.
 func ConfigPath() (string, error) {
 	d, err := ConfigDir()
 	if err != nil {
@@ -144,7 +139,6 @@ func ConfigPath() (string, error) {
 	return filepath.Join(d, configFileName), nil
 }
 
-// AuthPath returns the full path to the auth file (API keys).
 func AuthPath() (string, error) {
 	d, err := DataDir()
 	if err != nil {
@@ -153,7 +147,6 @@ func AuthPath() (string, error) {
 	return filepath.Join(d, authFileName), nil
 }
 
-// Load reads the config from disk, returning defaults if none exists.
 func Load() (*Config, error) {
 	cfg := Default()
 	path, err := ConfigPath()
@@ -173,7 +166,6 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// Save writes the config to disk, creating directories as needed.
 func (c *Config) Save() error {
 	path, err := ConfigPath()
 	if err != nil {
@@ -189,9 +181,8 @@ func (c *Config) Save() error {
 	return os.WriteFile(path, data, 0o600)
 }
 
-var validProviders = []string{"ollama", "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter"}
+var validProviders = []string{"ollama", "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter", "opencode"}
 
-// ValidProvider reports whether name is a known provider.
 func ValidProvider(name string) bool {
 	for _, p := range validProviders {
 		if p == name {
@@ -201,22 +192,11 @@ func ValidProvider(name string) bool {
 	return false
 }
 
-// Set applies a dotted config key (e.g. "ollama.host", "agent.auto_approve")
-// with an untyped string value, as typed into the /config command. A few
-// human-friendly aliases are accepted for the keys normal users touch most:
-//
-//	host             → ollama.host
-//	autoapprove      → agent.auto_approve (accepts on/off/yes/no)
-//	auto-approve     → agent.auto_approve
-//	approve          → agent.auto_approve
-//	iterations       → agent.max_iterations
-//	output           → agent.max_output_chars
-//	exclude/excludes → agent.exclude_dirs
 func (c *Config) Set(key, value string) error {
 	switch key {
 	case "provider":
 		if !ValidProvider(value) {
-			return fmt.Errorf("unknown provider %q (valid: ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter)", value)
+			return fmt.Errorf("unknown provider %q (valid: ollama, groq, openai, openai_compatible, anthropic, gemini, openrouter, opencode)", value)
 		}
 		c.Provider = value
 	case "model":
@@ -238,6 +218,8 @@ func (c *Config) Set(key, value string) error {
 		c.OpenRouter.BaseURL = value
 	case "openrouter.model":
 		c.OpenRouter.Model = value
+	case "opencode.model":
+		c.OpenCode.Model = value
 	case "anthropic.model":
 		c.Anthropic.Model = value
 	case "gemini.model":
@@ -275,7 +257,6 @@ func (c *Config) Set(key, value string) error {
 	return nil
 }
 
-// parseBool accepts on/off/yes/no as well as strconv.ParseBool values.
 func parseBool(s string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "on", "yes", "y", "true", "1":
@@ -286,8 +267,6 @@ func parseBool(s string) (bool, error) {
 	return strconv.ParseBool(s)
 }
 
-// SetProviderModel stores the model for a specific provider block as well as
-// the top-level model, so a resumed chat lands on the right model.
 func (c *Config) SetProviderModel(provider, model string) {
 	c.Model = model
 	switch provider {
@@ -299,6 +278,8 @@ func (c *Config) SetProviderModel(provider, model string) {
 		c.OpenAI.Model = model
 	case "openrouter":
 		c.OpenRouter.Model = model
+	case "opencode":
+		c.OpenCode.Model = model
 	case "anthropic":
 		c.Anthropic.Model = model
 	case "gemini":
@@ -306,16 +287,15 @@ func (c *Config) SetProviderModel(provider, model string) {
 	}
 }
 
-// Auth holds API keys, kept separate from config so they aren't committed.
 type Auth struct {
 	GroqAPIKey       string `json:"groq_api_key"`
 	OpenAIAPIKey     string `json:"openai_api_key"`
 	OpenRouterAPIKey string `json:"openrouter_api_key"`
+	OpenCodeAPIKey   string `json:"opencode_api_key"`
 	AnthropicAPIKey  string `json:"anthropic_api_key"`
 	GeminiAPIKey     string `json:"gemini_api_key"`
 }
 
-// LoadAuth reads the auth file, returning zero-value if absent.
 func LoadAuth() (*Auth, error) {
 	a := &Auth{}
 	path, err := AuthPath()
@@ -335,7 +315,6 @@ func LoadAuth() (*Auth, error) {
 	return a, nil
 }
 
-// SaveAuth writes the auth file.
 func (a *Auth) Save() error {
 	path, err := AuthPath()
 	if err != nil {
@@ -351,5 +330,4 @@ func (a *Auth) Save() error {
 	return os.WriteFile(path, data, 0o600)
 }
 
-// ErrUnknownProvider is returned for unsupported provider names.
 var ErrUnknownProvider = errors.New("unknown provider")

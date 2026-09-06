@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-// ListTool lists files and directories in a path.
 type ListTool struct{ base }
 
-// NewList creates the list tool.
 func NewList() *ListTool {
 	return &ListTool{base: base{
 		name:        "list",

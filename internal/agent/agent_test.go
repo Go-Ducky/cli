@@ -10,7 +10,6 @@ import (
 	"github.com/Go-Ducky/cli/internal/provider"
 )
 
-// mockProvider simulates a model that first calls a tool, then answers.
 type mockProvider struct {
 	firstCall bool
 	gotTools  []string
@@ -27,7 +26,7 @@ func (m *mockProvider) Chat(ctx context.Context, req provider.ChatRequest) (*pro
 	}
 	if !m.firstCall {
 		m.firstCall = true
-		// First call: request a bash tool call.
+
 		m.toolNum++
 		id := "t" + itoa(m.toolNum)
 		return &provider.ChatResponse{
@@ -42,7 +41,7 @@ func (m *mockProvider) Chat(ctx context.Context, req provider.ChatRequest) (*pro
 			},
 		}, nil
 	}
-	// Second call: final answer.
+
 	return &provider.ChatResponse{
 		Content: "done",
 		Message: provider.NewTextMessage(provider.RoleAssistant, "done"),
@@ -60,7 +59,6 @@ func (c *testCallback) OnToolEnd(n string, r *tools.Result)     {}
 func (c *testCallback) OnStatus(msg string)                     {}
 func (c *testCallback) OnComplete(s string, u provider.Usage)   {}
 
-// Since itoa is in the tools package, define a local one.
 func itoa(n int) string {
 	return strconv.Itoa(n)
 }
@@ -89,7 +87,7 @@ func TestAgentRunsToolThenAnswers(t *testing.T) {
 }
 
 func TestAgentStopsWhenNoToolCalls(t *testing.T) {
-	// Provider always returns text with no tool calls.
+
 	p := &textOnlyProvider{}
 	reg := tools.DefaultRegistry()
 	a := New(p, "mock", "test", t.TempDir(), &Config{}, reg)

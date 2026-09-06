@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-// GrepTool searches file contents for a pattern.
 type GrepTool struct{ base }
 
-// NewGrep creates the grep tool.
 func NewGrep() *GrepTool {
 	return &GrepTool{base: base{
 		name:        "grep",
@@ -78,7 +76,7 @@ func (t *GrepTool) Execute(ctx context.Context, tctx *Context, raw json.RawMessa
 				return nil
 			}
 		}
-		// skip binaries
+
 		if isLikelyBinary(path) {
 			return nil
 		}

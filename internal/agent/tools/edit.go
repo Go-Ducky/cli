@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-// EditTool applies a text replacement to an existing file.
 type EditTool struct{ base }
 
-// NewEdit creates the edit tool.
 func NewEdit() *EditTool {
 	return &EditTool{base: base{
 		name:        "edit",

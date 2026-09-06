@@ -14,17 +14,8 @@ import (
 	"github.com/Go-Ducky/cli/internal/ui"
 )
 
-// ErrQuit signals the user chose to exit during onboarding.
 var ErrQuit = errors.New("quit")
 
-// Onboard sets up GoDucky on first run: it ensures a model is available,
-// auto-installing Ollama and pulling a local coding model if the user consents,
-// otherwise guiding them to add a cloud API key (Groq recommended). All
-// questions are answerable with arrow keys / WASD.
-//
-// It returns the chosen provider and model, saving nothing itself (the caller
-// persists config). finished is true when setup completed successfully.
-// ErrQuit is returned when the user chose to exit the app entirely.
 func Onboard(cfg *config.Config) (providerName, modelName string, finished bool, err error) {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -53,8 +44,6 @@ func Onboard(cfg *config.Config) (providerName, modelName string, finished bool,
 	return cloudFlow(cfg, reader)
 }
 
-// localFlow handles the Ollama install + recommended model picker.
-// Returns done=true when a local model is ready and configured.
 func localFlow(cfg *config.Config, reader *bufio.Reader) (bool, error) {
 	if IsOllamaInstalled() {
 		ok, err := ui.RunConfirm("Ollama is already installed. Use local models?", "Yes, use Ollama", "No, use the cloud")
@@ -96,8 +85,6 @@ func localFlow(cfg *config.Config, reader *bufio.Reader) (bool, error) {
 	return pickAndPull(cfg, reader)
 }
 
-// pickAndPull shows the grouped recommended models and pulls the pick, or lets
-// the user skip to chat / quit.
 func pickAndPull(cfg *config.Config, reader *bufio.Reader) (bool, error) {
 	opts := RecommendedModelOptions()
 	fmt.Println()
@@ -140,13 +127,13 @@ func pickAndPull(cfg *config.Config, reader *bufio.Reader) (bool, error) {
 	return true, nil
 }
 
-// cloudFlow guides through adding a cloud provider API key.
 func cloudFlow(cfg *config.Config, reader *bufio.Reader) (string, string, bool, error) {
 	fmt.Println()
 	fmt.Println("Let's add a cloud provider instead (needs a free API key).")
 	cloudOpts := []string{
 		"Groq — fast free cloud tier (recommended)",
 		"OpenRouter — one key, many free models",
+		"OpenCode Zen — curated coding models (big-pickle)",
 		"OpenAI — ChatGPT",
 		"Anthropic — Claude",
 		"Gemini — Google",
@@ -160,7 +147,7 @@ func cloudFlow(cfg *config.Config, reader *bufio.Reader) (string, string, bool, 
 		fmt.Println("  (no provider configured yet — you can add one later with `goducky --login <provider>`)")
 		return cfg.Provider, cfg.Model, false, nil
 	}
-	names := []string{"groq", "openrouter", "openai", "anthropic", "gemini"}
+	names := []string{"groq", "openrouter", "opencode", "openai", "anthropic", "gemini"}
 	choice := names[pk]
 
 	for {
@@ -188,7 +175,6 @@ func cloudFlow(cfg *config.Config, reader *bufio.Reader) (string, string, bool, 
 	}
 }
 
-// providerDefaultModel returns the recommended starting model for a provider.
 func providerDefaultModel(provider string) string {
 	switch provider {
 	case "groq":
@@ -197,6 +183,8 @@ func providerDefaultModel(provider string) string {
 		return "gpt-4o-mini"
 	case "openrouter":
 		return "openrouter/free"
+	case "opencode":
+		return "big-pickle"
 	case "anthropic":
 		return "claude-3-5-haiku-latest"
 	case "gemini":
@@ -213,6 +201,8 @@ func setCloudModel(cfg *config.Config, provider, model string) {
 		cfg.OpenAI.Model = model
 	case "openrouter":
 		cfg.OpenRouter.Model = model
+	case "opencode":
+		cfg.OpenCode.Model = model
 	case "anthropic":
 		cfg.Anthropic.Model = model
 	case "gemini":
@@ -236,6 +226,8 @@ func setCloudKey(cfg *config.Config, provider, key string) error {
 		auth.GeminiAPIKey = key
 	case "openrouter":
 		auth.OpenRouterAPIKey = key
+	case "opencode":
+		auth.OpenCodeAPIKey = key
 	}
 	return auth.Save()
 }

@@ -9,9 +9,6 @@ import (
 
 const groqBaseURL = "https://api.groq.com/openai/v1"
 
-// NewGroq creates a provider for Groq's fast cloud models.
-// Groq exposes an OpenAI-compatible API, so we reuse the OpenAI provider with
-// a preset base URL and its own config/auth section.
 func NewGroq(cfg *config.Config, auth *config.Auth, _ bool) *OpenAI {
 	apiKey := cfg.Groq.APIKey
 	if apiKey == "" && auth != nil {

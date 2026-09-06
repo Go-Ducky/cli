@@ -11,8 +11,6 @@ import (
 	"github.com/Go-Ducky/cli/internal/config"
 )
 
-// NewOpenRouter creates a provider backed by OpenRouter's OpenAI-compatible API.
-// It reuses the generic OpenAI client pointed at OpenRouter's base URL.
 func NewOpenRouter(cfg *config.Config, auth *config.Auth) *OpenAI {
 	apiKey := cfg.OpenRouter.APIKey
 	if apiKey == "" && auth != nil {
@@ -30,8 +28,6 @@ func NewOpenRouter(cfg *config.Config, auth *config.Auth) *OpenAI {
 	}
 }
 
-// OpenRouterFreeModels lists the models currently free of charge on OpenRouter
-// (prompt price $0 / `:free` ids) using their public /models endpoint.
 func OpenRouterFreeModels(ctx context.Context, apiKey string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/models", nil)
 	if err != nil {

@@ -5,16 +5,12 @@ import (
 	"strings"
 )
 
-// ModelGroup groups recommended local models by family for the picker.
 type ModelGroup struct {
 	Family string
 	Blurb  string
 	Models []string
 }
 
-// RecommendedModels is the curated shortlist shown after installing Ollama,
-// ordered largest to smallest within each family so the user can trade speed
-// for quality.
 var RecommendedModels = []ModelGroup{
 	{
 		Family: "Qwen",
@@ -43,7 +39,6 @@ var RecommendedModels = []ModelGroup{
 	},
 }
 
-// RecommendedModelIDs flattens the recommended shortlist into plain model ids.
 func RecommendedModelIDs() []string {
 	var out []string
 	for _, g := range RecommendedModels {
@@ -52,9 +47,6 @@ func RecommendedModelIDs() []string {
 	return out
 }
 
-// RecommendedModelOptions flattens the groups into picker labels like
-// "Qwen · qwen2.5-coder:7b", followed by "Skip, go straight to chat" and
-// "Quit (exit)".
 func RecommendedModelOptions() []string {
 	var out []string
 	for _, g := range RecommendedModels {
@@ -66,8 +58,6 @@ func RecommendedModelOptions() []string {
 	return out
 }
 
-// ModelFromOption extracts the model id from a picker option label.
-// It returns the empty string for the skip/quit actions.
 func ModelFromOption(opt string) string {
 	if strings.Contains(opt, "──") {
 		return ""

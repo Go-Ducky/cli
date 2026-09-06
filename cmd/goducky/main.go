@@ -130,10 +130,11 @@ func run() error {
 			cfg.Gemini.APIKey = *keyFlag
 		case "openrouter":
 			cfg.OpenRouter.APIKey = *keyFlag
+		case "opencode":
+			cfg.OpenCode.APIKey = *keyFlag
 		}
 	}
 
-	// Run first-time onboarding wizard unless a provider was explicitly chosen.
 	if !cfg.Onboarded && *providerFlag == "" && *uniquePrompt == "" {
 		_, _, finished, oerr := setup.Onboard(cfg)
 		if errors.Is(oerr, setup.ErrQuit) {
@@ -142,7 +143,7 @@ func run() error {
 		if finished {
 			cfg.Onboarded = true
 		} else {
-			// Even if setup was skipped, don't nag on every run.
+
 			cfg.Onboarded = true
 		}
 		_ = oerr
@@ -186,17 +187,10 @@ func run() error {
 	return startTUI(a, cfg, auth, workDir, modelName, "", nil)
 }
 
-// startTUI launches the interactive chat, auto-saving the transcript when the
-// user quits so it can be resumed later with `goducky resume`.
-//
-// Mouse reporting is enabled so the wheel scrolls the chat; arrow up/down
-// recall past prompts. On most terminals you can still select/copy by holding
-// Ctrl (or Shift) while dragging, and paste with Ctrl+V or right-click.
 func startTUI(a *agent.Agent, cfg *config.Config, auth *config.Auth, workDir, modelName, resumeName string, history []provider.Message) error {
 	m := tui.New(a, workDir, providerLabel(cfg.Provider), modelName, cfg, auth)
 	m.SetHistory(resumeName, history)
-	// Mouse capture is always on: the wheel scrolls the chat AND dragging
-	// selects text, which is copied automatically on release.
+
 	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.SetProgram(prog)
 	if _, err := prog.Run(); err != nil {
@@ -205,8 +199,6 @@ func startTUI(a *agent.Agent, cfg *config.Config, auth *config.Auth, workDir, mo
 	return autoSaveChat(m)
 }
 
-// defaultWorkDir returns ~/Documents/goducky on every OS (creating it when
-// needed) so chats and project files always have a stable home.
 func defaultWorkDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -219,7 +211,6 @@ func defaultWorkDir() string {
 	return agent.CurrentDir()
 }
 
-// printModelsCatalog lists the best models for the active provider only.
 func printModelsCatalog(cfg *config.Config, auth *config.Auth) {
 	prov := cfg.Provider
 	fmt.Printf("Models for %s\n", prov)
@@ -237,7 +228,6 @@ func printModelsCatalog(cfg *config.Config, auth *config.Auth) {
 	fmt.Println("Switch the default in the chat with:  /config provider  (or /provider)")
 }
 
-// printOllamaModels lists the recommended local models and what's already pulled.
 func printOllamaModels(cfg *config.Config) {
 	fmt.Println("(local, free, private; bigger = smarter, needs more RAM)")
 	fmt.Println()
@@ -276,8 +266,6 @@ func printOllamaModels(cfg *config.Config) {
 	fmt.Println("Pull one with:  goducky -p \"/pull <model>\"  — or /pull <model> in the chat")
 }
 
-// printCloudModels lists the featured models for one cloud provider and shows
-// how to add the API key if none is saved yet.
 func printCloudModels(prov string, cfg *config.Config, auth *config.Auth) {
 	best := map[string][]string{
 		"groq":              {"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"},
@@ -286,6 +274,7 @@ func printCloudModels(prov string, cfg *config.Config, auth *config.Auth) {
 		"openai_compatible": {"qwen2.5-coder:7b", "gpt-4o-mini"},
 		"anthropic":         {"claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"},
 		"gemini":            {"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"},
+		"opencode":          {"big-pickle", "deepseek-v4-flash", "minimax-m2.5", "qwen3.7-max", "gpt-5.2-codex"},
 	}
 	list := best[prov]
 	if len(list) == 0 {
@@ -308,8 +297,6 @@ func printCloudModels(prov string, cfg *config.Config, auth *config.Auth) {
 	}
 }
 
-// hasAPIKey reports whether the provider already has a key (config, auth file,
-// or environment).
 func hasAPIKey(prov string, cfg *config.Config, auth *config.Auth) bool {
 	var key, env string
 	switch prov {
@@ -323,6 +310,8 @@ func hasAPIKey(prov string, cfg *config.Config, auth *config.Auth) bool {
 		key, env = auth.AnthropicAPIKey, cfg.Anthropic.EnvKey
 	case "gemini":
 		key, env = auth.GeminiAPIKey, cfg.Gemini.EnvKey
+	case "opencode":
+		key, env = auth.OpenCodeAPIKey, cfg.OpenCode.EnvKey
 	}
 	if key != "" {
 		return true
@@ -333,14 +322,12 @@ func hasAPIKey(prov string, cfg *config.Config, auth *config.Auth) bool {
 	return false
 }
 
-// mcpCmd starts the MCP stdio server so external tools (Claude Desktop, IDEs)
-// can use goducky's file/bash tools in a working directory you select.
 func mcpCmd(args []string) error {
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	dir := fs.String("dir", "", "working directory for the tools (default: ~/Documents/goducky)")
 	fs.Parse(args)
 
-workDir := defaultWorkDir()
+	workDir := defaultWorkDir()
 	if *dir != "" {
 		abs, err := filepath.Abs(*dir)
 		if err != nil {
@@ -354,7 +341,7 @@ workDir := defaultWorkDir()
 
 	reg := tools.DefaultRegistry()
 	srv := mcp.New(workDir, reg, version)
-	// stdout carries the MCP protocol; any diagnostics must go to stderr.
+
 	return srv.Run(context.Background(), os.Stdin, os.Stdout)
 }
 
@@ -373,8 +360,6 @@ func autoSaveChat(m interface{ Session() *session.Session }) error {
 	return nil
 }
 
-// resumeTUI loads a saved chat and starts the TUI with its history, provider,
-// model and working directory.
 func resumeTUI(s *session.Session) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -411,7 +396,7 @@ func resumeTUI(s *session.Session) error {
 }
 
 func oneShot(args []string, a *agent.Agent, workDir, prompt string) error {
-	// One-shot mode (no TUI): print model output to stdout.
+
 	msgs := []provider.Message{provider.NewTextMessage(provider.RoleUser, prompt)}
 	cb := &printCallback{}
 	result, _, err := a.Run(context.Background(), msgs, cb)
@@ -432,7 +417,7 @@ func (p *printCallback) OnComplete(response string, usage provider.Usage) {}
 
 func saveAPIKey(providerName string) error {
 	switch providerName {
-	case "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter":
+	case "groq", "openai", "openai_compatible", "anthropic", "gemini", "openrouter", "opencode":
 	default:
 		return fmt.Errorf("unknown provider %q for login", providerName)
 	}
@@ -467,6 +452,8 @@ func saveAPIKey(providerName string) error {
 		auth.GeminiAPIKey = key
 	case "openrouter":
 		auth.OpenRouterAPIKey = key
+	case "opencode":
+		auth.OpenCodeAPIKey = key
 	}
 	if err := auth.Save(); err != nil {
 		return err
@@ -487,6 +474,8 @@ func providerLabel(p string) string {
 		return "OpenAI-compatible"
 	case "openrouter":
 		return "OpenRouter"
+	case "opencode":
+		return "OpenCode Zen"
 	default:
 		return p
 	}

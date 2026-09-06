@@ -8,10 +8,8 @@ import (
 	"strings"
 )
 
-// WriteTool creates or overwrites a file.
 type WriteTool struct{ base }
 
-// NewWrite creates the write tool.
 func NewWrite() *WriteTool {
 	return &WriteTool{base: base{
 		name:        "write",
@@ -49,7 +47,6 @@ func (t *WriteTool) Execute(ctx context.Context, tctx *Context, raw json.RawMess
 		return &Result{Content: "Error creating directory: " + err.Error(), IsError: true}, nil
 	}
 
-	// Normalize CRLF -> LF for consistency across platforms.
 	content := strings.ReplaceAll(args.Content, "\r\n", "\n")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return &Result{Content: "Error writing file: " + err.Error(), IsError: true}, nil

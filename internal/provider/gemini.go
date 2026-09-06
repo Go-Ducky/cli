@@ -14,14 +14,12 @@ import (
 	"github.com/Go-Ducky/cli/internal/config"
 )
 
-// Gemini is a provider for Google's Gemini API.
 type Gemini struct {
 	apiKey string
 	model  string
 	client *http.Client
 }
 
-// NewGemini creates a Gemini provider from config and auth.
 func NewGemini(cfg *config.Config, auth *config.Auth) *Gemini {
 	apiKey := cfg.Gemini.APIKey
 	if apiKey == "" && auth != nil {
@@ -145,7 +143,6 @@ func (g *Gemini) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 			}
 		}
 
-		// For tool results, append to existing function role content if it exists.
 		if role == RoleTool && len(contents) > 0 && contents[len(contents)-1].Role == "function" {
 			contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, parts...)
 			continue
@@ -323,7 +320,6 @@ func geminiToMessage(c geminiContent) Message {
 	return Message{Role: RoleAssistant, Content: out}
 }
 
-// ListModels lists models via the Gemini API.
 func (g *Gemini) ListModels(ctx context.Context) ([]string, error) {
 	url := "https://generativelanguage.googleapis.com/v1beta/models?key=" + g.apiKey
 	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

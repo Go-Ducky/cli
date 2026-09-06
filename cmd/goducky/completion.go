@@ -11,7 +11,7 @@ const bashCompletion = `_goducky() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     local flags="--version --models --yes --provider --model --base-url --key --login --dir -p --help"
     local commands="completion update mcp sessions resume rename"
-    local providers="ollama groq openai openai_compatible anthropic gemini openrouter"
+    local providers="ollama groq openai openai_compatible anthropic gemini openrouter opencode"
     if [[ ${COMP_CWORD} -eq 1 && "${cur}" != -* ]]; then
         COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
         return 0
@@ -33,7 +33,7 @@ _goducky() {
     _arguments \
         '1:command:(completion update mcp sessions resume rename)' \
         '(-p --p)'{-p,--p}'[run a one-shot prompt and exit]:prompt: ' \
-        '--provider[AI provider]:provider:(ollama groq openai openai_compatible anthropic gemini openrouter)' \
+        '--provider[AI provider]:provider:(ollama groq openai openai_compatible anthropic gemini openrouter opencode)' \
         '--model[model name]:model: ' \
         '--base-url[base URL for OpenAI-compatible endpoints]:url: ' \
         '--key[API key]:key: ' \
@@ -55,7 +55,7 @@ complete -c goducky -n '__fish_use_subcommand' -a sessions -d 'list saved chats'
 complete -c goducky -n '__fish_use_subcommand' -a resume -d 'resume a saved chat'
 complete -c goducky -n '__fish_use_subcommand' -a rename -d 'rename a saved chat'
 complete -c goducky -l p -r -d 'run a one-shot prompt and exit'
-complete -c goducky -l provider -r -a 'ollama groq openai openai_compatible anthropic gemini openrouter' -d 'AI provider'
+complete -c goducky -l provider -r -a 'ollama groq openai openai_compatible anthropic gemini openrouter opencode' -d 'AI provider'
 complete -c goducky -l model -r -d 'model name (overrides config)'
 complete -c goducky -l base-url -r -d 'base URL for OpenAI-compatible endpoints'
 complete -c goducky -l key -r -d 'API key (overrides config/env)'
