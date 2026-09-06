@@ -330,6 +330,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.selecting && msg.Action == tea.MouseActionMotion {
+				if msg.Y < 1 {
+					m.viewport.LineUp(1)
+				} else if msg.Y > m.viewport.Height {
+					m.viewport.LineDown(1)
+				}
 				if row, col, ok := m.mouseToDoc(msg); ok {
 					m.selEnd = &selPos{row: row, col: col}
 					m.viewport.SetContent(m.renderBody())
@@ -608,7 +613,7 @@ func (m *model) renderBody() string {
 	}
 	m.plainLines = m.plainBodyLines(w)
 	if m.selStart != nil && m.selEnd != nil {
-		return m.highlightedBody()
+		return m.highlightedBody(w)
 	}
 	var sb strings.Builder
 	for _, it := range m.items {
@@ -683,7 +688,7 @@ func (m *model) plainBodyLines(w int) []string {
 	return lines
 }
 
-func (m *model) highlightedBody() string {
+func (m *model) highlightedBody(w int) string {
 	a, b := m.normSel()
 	if b.row >= len(m.plainLines) {
 		b.row = len(m.plainLines) - 1
@@ -703,13 +708,13 @@ func (m *model) highlightedBody() string {
 			if a.col > b.col {
 				a, b = b, a
 			}
-			sb.WriteString(selSlice(line, a.col, b.col, selStyle))
+			sb.WriteString(highlightRange(line, a.col, b.col, w))
 		case i == a.row:
-			sb.WriteString(selSlice(line, a.col, displayWidth(line), selStyle))
+			sb.WriteString(highlightRange(line, a.col, w, w))
 		case i == b.row:
-			sb.WriteString(selSlice(line, 0, b.col, selStyle))
+			sb.WriteString(highlightRange(line, 0, b.col, w))
 		default:
-			sb.WriteString(selStyle.Render(line))
+			sb.WriteString(padSel(line, w, selStyle))
 		}
 		sb.WriteString("\n")
 	}
@@ -742,24 +747,34 @@ func (m *model) bodyPlain() string {
 	return strings.Join(m.plainLines, "\n")
 }
 
-func selSlice(line string, from, to int, st lipgloss.Style) string {
-	w := displayWidth(line)
+func highlightRange(line string, from, to, w int) string {
+	wl := displayWidth(line)
 	if from < 0 {
 		from = 0
 	}
-	if to > w {
-		to = w
+	if to > wl {
+		to = wl
 	}
-	if from > w {
-		from = w
+	if from > wl {
+		from = wl
 	}
 	if from >= to {
-		return line
+		return padSel(line, w, selStyle)
 	}
 	pre := subCells(line, 0, from)
 	sel := subCells(line, from, to)
-	post := subCells(line, to, w)
-	return pre + st.Render(sel) + post
+	post := subCells(line, to, wl)
+	if w > wl {
+		sel += strings.Repeat(" ", w-wl)
+	}
+	return pre + selStyle.Render(sel) + post
+}
+
+func padSel(line string, w int, st lipgloss.Style) string {
+	if w > displayWidth(line) {
+		line += strings.Repeat(" ", w-displayWidth(line))
+	}
+	return st.Render(line)
 }
 
 func displayWidth(s string) int { return runewidth.StringWidth(s) }
@@ -1151,19 +1166,24 @@ func (m *model) mouseToDoc(msg tea.MouseMsg) (row, col int, ok bool) {
 	if m.width > 0 {
 		header = 1
 	}
+	if m.viewport.Height <= 0 {
+		return 0, 0, false
+	}
 	localY := msg.Y - header
-	if localY < 0 || localY >= m.viewport.Height {
+	if localY < 0 {
+		localY = 0
+	} else if localY >= m.viewport.Height {
+		localY = m.viewport.Height - 1
+	}
+	maxRow := len(m.plainLines) - 1
+	if maxRow < 0 {
 		return 0, 0, false
 	}
 	row = m.viewport.YOffset + localY
 	if row < 0 {
 		row = 0
-	}
-	if maxRow := len(m.plainLines) - 1; row > maxRow {
+	} else if row > maxRow {
 		row = maxRow
-	}
-	if row < 0 {
-		return 0, 0, false
 	}
 	if msg.X < 0 {
 		msg.X = 0
