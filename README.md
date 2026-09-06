@@ -11,18 +11,7 @@ One static binary. Runs on Windows, macOS, and Linux.
 
 ### Windows
 
-Download `goducky-windows-amd64.exe` (or `goducky-windows-arm64.exe` on ARM devices)
-from the [Releases](https://github.com/Go-Ducky/cli/releases) page, rename it to
-`goducky.exe`, and place it in a folder on your PATH:
-
-```powershell
-$dir = "$HOME\bin"; New-Item -ItemType Directory -Force $dir | Out-Null
-Move-Item goducky.exe "$dir\goducky.exe"
-$env:PATH += ";$dir"
-setx PATH "$env:PATH;$dir"
-```
-
-Or run the installer script, which downloads the right binary and adds it to your
+Run the installer script, which downloads the right binary and adds it to your
 user PATH automatically (works in the current terminal too):
 
 ```powershell
@@ -32,6 +21,17 @@ powershell -ExecutionPolicy Bypass -File "$env:TEMP\goducky-install.ps1"
 
 If Windows warns when you first run it, right-click `goducky.exe` in Explorer and
 choose _Properties → Unblock_.
+
+Or download `goducky-windows-amd64.exe` (or `goducky-windows-arm64.exe` on ARM devices)
+from the [Releases](https://github.com/Go-Ducky/cli/releases) page, rename it to
+`goducky.exe`, and place it in a folder on your PATH:
+
+```powershell
+$dir = "$HOME\bin"; New-Item -ItemType Directory -Force $dir | Out-Null
+Move-Item goducky.exe "$dir\goducky.exe"
+$env:PATH += ";$dir"
+setx PATH "$env:PATH;$dir"
+```
 
 ### macOS & Linux
 
@@ -174,9 +174,20 @@ Settings live in `~/.config/goducky/config.json` or `~/Library/Application Suppo
   "model": "qwen2.5-coder:7b",
   "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:7b" },
   "groq": { "model": "llama-3.3-70b-versatile" },
-  "openrouter": { "base_url": "https://openrouter.ai/api/v1", "model": "openrouter/free", "env_key": "OPENROUTER_API_KEY" },
-  "openai": { "base_url": "https://api.openai.com/v1", "model": "gpt-4o", "env_key": "OPENAI_API_KEY" },
-  "anthropic": { "model": "claude-3-5-sonnet-latest", "env_key": "ANTHROPIC_API_KEY" },
+  "openrouter": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "model": "openrouter/free",
+    "env_key": "OPENROUTER_API_KEY"
+  },
+  "openai": {
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o",
+    "env_key": "OPENAI_API_KEY"
+  },
+  "anthropic": {
+    "model": "claude-3-5-sonnet-latest",
+    "env_key": "ANTHROPIC_API_KEY"
+  },
   "gemini": { "model": "gemini-1.5-pro", "env_key": "GEMINI_API_KEY" },
   "agent": { "auto_approve": false }
 }
@@ -236,7 +247,10 @@ Add it to Claude Desktop (`claude_desktop_config.json`) with:
 ```json
 {
   "mcpServers": {
-    "goducky": { "command": "goducky", "args": ["mcp", "--dir", "/path/to/project"] }
+    "goducky": {
+      "command": "goducky",
+      "args": ["mcp", "--dir", "/path/to/project"]
+    }
   }
 }
 ```
